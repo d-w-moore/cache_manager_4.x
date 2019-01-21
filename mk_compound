@@ -1,0 +1,22 @@
+#!/bin/bash
+
+PARENT=~irods/Rescvault
+owner=irods
+
+cache=Cache
+arch=Archive
+
+while [ -d $PARENT/$((++x)) ] ; do :; done
+echo "x is $x"
+DIRS=( $PARENT/$x/{$cache,$arch} ) 
+sudo su - $owner -c " mkdir -p ${DIRS[*]}"
+if [ $owner = root ] ; then
+  sudo su - $owner -c "chown -R irods.irods $PARENT/$x"
+fi
+sudo su - irods -c "
+    iadmin mkresc cmp$x compound
+    iadmin mkresc cch$x unixfilesystem `hostname`:${DIRS[0]}
+    iadmin mkresc arc$x unixfilesystem `hostname`:${DIRS[1]}
+    iadmin modresc cmp$x context auto_repl=off
+    iadmin addchildtoresc cmp$x cch$x cache
+    iadmin addchildtoresc cmp$x arc$x archive"
