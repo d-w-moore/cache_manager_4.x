@@ -10,8 +10,10 @@ find_compound_children (*idcld , *nmcld, *id, *nm, *cx)
   *nm=list()
   *ptemp = ''
 
-  foreach (*p in select RESC_NAME,RESC_PARENT where RESC_NAME = '*nmcld') { *ptemp = *p.RESC_PARENT }
-  if (*ptemp == '') {
+  if (*nmcld != '') {
+      foreach (*p in select RESC_NAME,RESC_PARENT where RESC_NAME = '*nmcld') { *ptemp = *p.RESC_PARENT }
+  }
+  if (*ptemp == '' && *idcld != '') {
       foreach (*p in select RESC_ID,RESC_PARENT where RESC_ID = '*idcld') { *ptemp = *p.RESC_PARENT }
   }
   *parent = ''

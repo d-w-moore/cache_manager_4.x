@@ -2,6 +2,25 @@ testmain{
   trace_hier(*cchname,*m,*h)
    *l = trace_hier(*cchname,*m,*h)
    writeLine ("stdout", "list [*l] map [*m] hier [*h]")
+   if (*syncObj != '') {
+       msiSplitPath(*syncObj,*coll,*basen)
+           writeLine("stdout","[*coll] [*basen]")
+       foreach (*x in select DATA_PATH,DATA_NAME,COLL_NAME,DATA_REPL_NUM where DATA_RESC_HIER = '*h' 
+                              and COLL_NAME = '*coll' and DATA_NAME = '*basen')
+       {
+           *P = *x.DATA_PATH
+           *C=*x.COLL_NAME
+           *D=*x.DATA_NAME
+           writeLine("stdout","repl_num = " ++ *x.DATA_REPL_NUM ++ " - *C/*D on [*h]" )
+       }
+       if (*doSync != 0) {
+         *status = msisync_to_archive("*h", "*P", "*C/*D")
+         writeLine("stdout","--- sync status = [*status]")
+       } else {
+         writeLine("stdout"," msisync_to_archive(*h, *P, *C/*D)")
+       }
+
+   }
 }
 
 trace_hier(*cname,*map,*hier) {
@@ -54,5 +73,5 @@ trace_hier(*cname,*map,*hier) {
    *lst
 }
 
-input *cchname=$'',*vsn=$42
+input *cchname=$'',*vsn=$42, *syncObj=$'', *doSync=$0
 output ruleExecOut
