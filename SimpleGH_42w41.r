@@ -39,11 +39,11 @@ trace_hier(*cname,*map,*hier) {
      *par.*name = *parent
   }
 
-  writeLine("stderr", "par = *par")
-  writeLine("stderr", "\n----------id2n:")
+  ## writeLine("stderr", "par = *par")
+  ## writeLine("stderr", "\n----------id2n:")
   foreach (*z  in *id2n ) {
     *nam = *id2n."*z"
-    writeLine ("stderr", "*z -> *nam ")
+    ## writeLine ("stderr", "*z -> *nam ")
   }
 
   ## == convert ; par holds id, not name , if vsn >= 42
@@ -56,7 +56,7 @@ trace_hier(*cname,*map,*hier) {
           #writeLine("stderr", " [*z] id_*hold") 
           if (*hold != "") { *nm = *id2n."id_*hold" } 
       }
-      writeLine ("stderr"," *z *hold *nm")
+      ## writeLine ("stderr"," *z *hold *nm")
       *map.*z = *nm
   }
 
