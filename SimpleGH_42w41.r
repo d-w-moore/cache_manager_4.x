@@ -48,7 +48,7 @@ trace_hier(*cname,*map,*hier) {
 
   ## == convert ; par holds id, not name , if vsn >= 42
 
-  writeLine("stderr", "----------(par->map):")
+  ##writeLine("stderr", "----------(par->map):")
   foreach (*z  in *par ) {
       *hold = *par.*z
       *nm = *hold
