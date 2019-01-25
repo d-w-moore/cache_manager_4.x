@@ -1,0 +1,30 @@
+overall notes
+
+
+
+=============================================
+
+specific & pseudocode
+
+put, repl to compound
+  hier_pre  : update root resc access_time 
+  hier_post : delete root resc access_time 
+  acPostProcFor(Put,Repl): 
+    if ( $KVPAIrs is cch || is arc )
+       update access_time on parent
+       set  access_time on root to 0
+
+#-----------------------------------
+
+cache clear phase:
+
+  for each compound resc clearable 
+
+    mark root as being cleared -- (set crit_flag=3  to bar access if urgent)
+
+    check hier up from compound node for access_time
+
+    if too young, abort this resc-clear
+
+    query d-objs that qualify to clear
+

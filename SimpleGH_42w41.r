@@ -73,5 +73,8 @@ trace_hier(*cname,*map,*hier) {
    *lst
 }
 
+# irule -F  SimpleGH_42w41.r "*cchname='cch'" "*vsn=41" "*syncObj='/tempZone/home/rods/aa'" 2>/dev/null
+
 input *cchname=$'',*vsn=$42, *syncObj=$'', *doSync=$0
 output ruleExecOut
+
