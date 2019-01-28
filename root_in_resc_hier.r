@@ -1,6 +1,11 @@
 main{
   *root_resc = root_in_resc_hier(*hierstring)
   writeLine("stdout","extracted root of hier -> [*root_resc]")
+  #compound_hier_root_lookup(*m)
+  foreach (*rescname in *m) {
+      *rootresc = *rescname
+      writeLine("stderr"," compound - [*rescname] ;" ++ " root is - [*rootresc] ")
+  }
 }
 
 root_in_resc_hier(*h)
