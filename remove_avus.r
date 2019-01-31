@@ -3,10 +3,31 @@ main{
 #
 #                                         *match is "like" for like comparison
 #                                         *match is "" for equality comparison
-  remove_AVUs_matching_key(*objpath, *key, *match)
+  #remove_data_AVUs_matching_key(*objpath, *key, *match)
+
+  #msiString2KeyValPair("b=b%bb=c",*k)
+  #msiAssociateKeyValuePairsToObj(*k,"pt0","-R")
+
+# find_resc_AVUs_matching_key("pt0","a%","like",*kvp)
+# writeLine("stdout","*kvp")
+
+  #msiRemoveKeyValuePairsFromObj(*kvp,"pt0","-R")
 }
 
-remove_AVUs_matching_key(*dobjPath,*Key, *matchType)
+find_resc_AVUs_matching_key(*rescname, *like_pattern, *kvpairs)
+{
+    #*keylist = list()
+    #*vallist = list()
+
+    foreach (*x in select META_RESC_ATTR_NAME, META_RESC_ATTR_VALUE where RESC_NAME = '*rescname' and 
+                    META_RESC_ATTR_NAME like "*like_pattern")
+    {
+        *name  = *x.META_RESC_ATTR_NAME
+        *kvpairs.*name =  *x.META_RESC_ATTR_VALUE
+    }
+}
+
+remove_data_AVUs_matching_key(*dobjPath,*Key, *matchType)
 {
     msiSplitPath(*dobjPath,*dobjColl,*dobjName)
     *keylist = list()
@@ -28,7 +49,7 @@ remove_AVUs_matching_key(*dobjPath,*Key, *matchType)
             }
         }
     }
-    *nVal = size(*vallist) 
+    *nVal = size(*vallist)
     writeLine("stdout","removing:")
     for (*i = 0; *i < *nVal ; *i = *i+1) {
         *v = elem(*vallist,*i)
@@ -41,5 +62,7 @@ remove_AVUs_matching_key(*dobjPath,*Key, *matchType)
     }
 }
 
-input *objpath=$"/tempZone/home/rods/VERSION.json", *key=$"x", *match=$"like"
+#input *rescname=$"cch1", *key=$"^x", *match=$"like"
+#input *objpath=$"/tempZone/home/rods/VERSION.json", *key=$"x", *match=$"like"
+input null
 output ruleExecOut

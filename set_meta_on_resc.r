@@ -68,7 +68,8 @@ set_and_check_resc_meta(*resc,*key,*value,*retrieved, *guardstring)
                if (*value != *retrieved) { *success = -1  }  # contention
             }
             else {
-               *success = -1 # if (*success > 0) { *success = *tries } # uncomment  to detect multiple matches
+               *success = -1
+               # if (*success > 0) { *success = *tries } # this would detect multiple matches
             }
         }
     }

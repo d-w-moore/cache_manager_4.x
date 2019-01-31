@@ -1,11 +1,11 @@
 testmain{
-  trace_hier(*cchname,*m,*h)
+  trace_hier(*cchname,*iRodsVsn,*h)
    *l = trace_hier(*cchname,*m,*h)
    writeLine ("stdout", "list [*l] map [*m] hier [*h]")
    if (*syncObj != '') {
        msiSplitPath(*syncObj,*coll,*basen)
            writeLine("stdout","[*coll] [*basen]")
-       foreach (*x in select DATA_PATH,DATA_NAME,COLL_NAME,DATA_REPL_NUM where DATA_RESC_HIER = '*h' 
+       foreach (*x in select DATA_PATH,DATA_NAME,COLL_NAME,DATA_REPL_NUM where DATA_RESC_HIER = '*h'
                               and COLL_NAME = '*coll' and DATA_NAME = '*basen')
        {
            *P = *x.DATA_PATH
@@ -19,7 +19,6 @@ testmain{
        } else {
          writeLine("stdout"," msisync_to_archive(*h, *P, *C/*D)")
        }
-
    }
 }
 
@@ -39,24 +38,16 @@ trace_hier(*cname,*map,*hier) {
      *par.*name = *parent
   }
 
-  ## writeLine("stderr", "par = *par")
-  ## writeLine("stderr", "\n----------id2n:")
   foreach (*z  in *id2n ) {
     *nam = *id2n."*z"
-    ## writeLine ("stderr", "*z -> *nam ")
   }
 
-  ## == convert ; par holds id, not name , if vsn >= 42
-
-  ##writeLine("stderr", "----------(par->map):")
   foreach (*z  in *par ) {
       *hold = *par.*z
       *nm = *hold
-      if (*vsn >= 42) { 
-          #writeLine("stderr", " [*z] id_*hold") 
-          if (*hold != "") { *nm = *id2n."id_*hold" } 
+      if (*vsn >= 42) {
+          if (*hold != "") { *nm = *id2n."id_*hold" }
       }
-      ## writeLine ("stderr"," *z *hold *nm")
       *map.*z = *nm
   }
 
@@ -75,6 +66,5 @@ trace_hier(*cname,*map,*hier) {
 
 # irule -F  SimpleGH_42w41.r "*cchname='cch'" "*vsn=41" "*syncObj='/tempZone/home/rods/aa'" 2>/dev/null
 
-input *cchname=$'',*vsn=$42, *syncObj=$'', *doSync=$0
+input *cchname=$'',*iRodsVsn=$42, *syncObj=$'', *doSync=$0
 output ruleExecOut
-
