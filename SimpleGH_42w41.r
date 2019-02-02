@@ -1,7 +1,6 @@
-testmain{
-  trace_hier(*cchname,*iRodsVsn,*h)
-   *l = trace_hier(*cchname,*m,*h)
-   writeLine ("stdout", "list [*l] map [*m] hier [*h]")
+testmain{ # was *l = trace_hier(*cchname,*m,*h), 
+   *l = trace_hier(*cchname,*iRodsVsn,*h)
+   writeLine ("stdout", "list [ *l ] ; hierarchy string [*h]")
    if (*syncObj != '') {
        msiSplitPath(*syncObj,*coll,*basen)
            writeLine("stdout","[*coll] [*basen]")
@@ -22,7 +21,7 @@ testmain{
    }
 }
 
-trace_hier(*cname,*map,*hier) {
+trace_hier(*cname,*vsn,*hier) {
   msiString2KeyValPair( "", *lin )
   msiString2KeyValPair( "", *par)
   msiString2KeyValPair( "", *id2n )
