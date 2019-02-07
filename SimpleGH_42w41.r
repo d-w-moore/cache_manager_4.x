@@ -1,25 +1,43 @@
-testmain{
-  trace_hier(*cchname,*m,*h)
+testmain {
+   trace_hier(*cchname,*m,*h)
    *l = trace_hier(*cchname,*m,*h)
    writeLine ("stdout", "list [*l] map [*m] hier [*h]")
-   if (*syncObj != '') {
+   if (*syncObj != '')  {
        msiSplitPath(*syncObj,*coll,*basen)
-           writeLine("stdout","[*coll] [*basen]")
+       writeLine("stdout","[*coll] [*basen]")
+       *P = ''
        foreach (*x in select DATA_PATH,DATA_NAME,COLL_NAME,DATA_REPL_NUM where DATA_RESC_HIER = '*h' 
                               and COLL_NAME = '*coll' and DATA_NAME = '*basen')
        {
-           *P = *x.DATA_PATH
+           *P=*x.DATA_PATH
            *C=*x.COLL_NAME
            *D=*x.DATA_NAME
            writeLine("stdout","repl_num = " ++ *x.DATA_REPL_NUM ++ " - *C/*D on [*h]" )
        }
-       if (*doSync != 0) {
-         *status = msisync_to_archive("*h", "*P", "*C/*D")
-         writeLine("stdout","--- sync status = [*status]")
+       if (*P != '' && *doSync != 0) {
+         *sync_status = msisync_to_archive("*h", "*P", "*C/*D")
+         writeLine("stdout","--- sync status = [*sync_status]")
+           if (*sync_status == 0 && *doSync > 1) {
+             *trimStatus = -999
+             *cache_replnum = ''
+#            # -- get cache repl_num for trim
+             foreach (*getrepl in select DATA_REPL_NUM
+                               where DATA_NAME = '*D' and COLL_NAME = '*C'
+                               and DATA_RESC_NAME = '*cchname')
+             {
+               *cache_replnum = *getrepl.DATA_REPL_NUM
+             }
+             if (*cache_replnum != '') {
+               writeLine("stdout","TRIM repl from CACHE: number is " ++ "*cache_replnum")
+               msiDataObjTrim('*C/*D','null','*cache_replnum','1','1',*trim_status)
+               writeLine("stdout","--- trim status = [*trim_status]")
+             }
+           }
        } else {
-         writeLine("stdout"," msisync_to_archive(*h, *P, *C/*D)")
+         writeLine("stdout","skipping ...")
        }
-
+       writeLine("stdout","msisync_to_archive('*h', '*P', '*C/*D')")
+       writeLine("stdout","msiDataObjTrim('*C/*D','null','','1',\*st)")
    }
 }
 
