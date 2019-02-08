@@ -21,8 +21,40 @@ prune_cache_on_compound_resource ( *rescN )
 
 
 #----------------------------------------------------------------------
+prune_cache.r  rule script:
+
+    options : 1. schedule one-time prune for specific compound resource (by name)
+                    (a) stream parameter will be "stdout" or "serverlog"
+
+              2. schedule recurring prune operations for 
+                    (a) all compound resources
+                    (b) specific compound resource (by name)
+                    (c) will use context string to set execution frequency
+#----------------------------------------------------------------------
+
+metadata -
+
+  on each data object :
+
+          NAME    "irods_cache::access_time_on::<resc-hier>"
+          VALUE   ICAT time corresponding to last data object close)
+
+  on compound resource node :
+
+          NAME    "irods_cache::prune_in_progress"
+          VALUE   (unique string as determined by launch time + shell PID time if available)
+
+
+#----------------------------------------------------------------------
+context strings on compound resource (customization knobs):
+
+          irods_cache_prune_frequency - 1 minute by default 
+          irods_cache_bytes_usage_threshold -- no default, must be set or pruning will ignore this node)
+
+#----------------------------------------------------------------------
 
 ## this dynamic PEP records atime on a data object when it is closed:
+##
 
 pep_resource_close_post  (*Inst, *DObj, *other)  
 {
