@@ -1,30 +1,50 @@
-overall notes
 
 
 
-=============================================
+#----------------------------------
 
-specific & pseudocode
+core operations for prune routine: (not yet fleshed out)
 
-put, repl to compound
-  hier_pre  : update root resc access_time 
-  hier_post : delete root resc access_time 
-  acPostProcFor(Put,Repl): 
-    if ( $KVPAIrs is cch || is arc )
-       update access_time on parent
-       set  access_time on root to 0
+prune_cache_on_compound_resource ( *rescN )
 
-#-----------------------------------
+    1. lock *rescN (avoid collisions)
+    2. calculate total bytes usage
+    3. query data objects on resource cache/arch, ordering by age, extract dataobj size and repl_status
+    4. while bytes_usage > bytes_threshold (from context string on compound resc):
+         sync_to_archive and trim-if-possible small files ... ( or schedule this for larger files ... )
+         until we've iterated thru freeing enough bytes to reach threshold
+    5. log critical conditions to server log:
+         a - threshold not honored 
+         b - Nth failure to sync ( N set to some value in context string )
+    6. stamp (with ICAT time) all dobjs existing on  this cache but not having an associated 'atime' 
+    7. unlock *rescN
 
-cache clear phase:
 
-  for each compound resc clearable 
+#----------------------------------------------------------------------
 
-    mark root as being cleared -- (set crit_flag=3  to bar access if urgent)
+## this dynamic PEP records atime on a data object when it is closed:
 
-    check hier up from compound node for access_time
+pep_resource_close_post  (*Inst, *DObj, *other)  
+{
+  pep_resource_close_HOOK ( *DObj, "_post") 
+}
 
-    if too young, abort this resc-clear
+pep_resource_close_HOOK ( *DObj, *annotation ) 
+{
+    writeLine("serverLog","----> pep_resource_close / *annotation " )
+    msiGetIcatTime(*tm, "unix")
+    *dataId = ""
+    *path = *DObj.logical_path
+    *hier = *DObj.resc_hier
+    writeLine("serverLog","----+   path = *path ;  hier = *hier")
+    if (getDataObjectIDFromPathAndResc(*path, *hier, *dataId)) # <-- to bury details of query for data id
+    {
+        writeLine("serverLog","----+   data id = [*dataId] ; time = [*tm]")
+        *k."irods_cache::atime::*dataId" = "*tm"
+        msiSetKeyValuePairsToObj (*k, "*path","-d)
+    }
+    writeLine("serverLog","<---- pep_resource_close / *annotation " )
+}
 
-    query d-objs that qualify to clear
+#----------------------------------------------------------------------
 
