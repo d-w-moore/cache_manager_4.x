@@ -2,6 +2,47 @@
 
 IRodsVersion() { 41 }
 
+get_cmdline_tokens(*Unique,*Stream) {
+    *Stream = ""
+    *Unique = ""
+    *errcode = errorcode(
+      { *Unique = eval(str(*uniq))   # only source of truth for what is entered on
+        *Stream = eval(str(*stream)) # command line
+      }
+    )
+#### $ irule '*e=get_cmdline_tokens(*u,*s);*l=writeLine("stdout","*e/*u/*s")' \
+#               "*uniq=$$%*stream='serverLog'" ruleExecOut
+#--> 0/4213/serverLog
+*errcode;
+}
+
+prune_cache { writeLine ("serverLog", "dummy_prune_cache_Routine") }
+
+#---
+
+prune_rule_ids_as_string(*p) { str( rule_ids_as_list(*p)) }
+
+prune_rule_ids_as_list(*pad_elements)
+{
+    *delaylist = if *pad_elements then list("") else list()
+
+    foreach (*rule in select RULE_EXEC_ID,RULE_EXEC_NAME) {
+       if ( *rule.RULE_EXEC_NAME like "\*prune_cache*") {
+         *delaylist = cons( *rule.RULE_EXEC_ID , *delaylist )
+       }
+    }
+
+    if (*pad_elements) { *delaylist=cons("",*delaylist) }
+
+*delaylist;
+}
+
+
+
+# schedule_cmdline(*resource) {
+#   *y= get_cmdline_pid(*pid)
+#   writeLine("stdout","errorcode = *y")
+# }
 	#---#
 
 trace_hierarchy (*cname,*map,*hier)
@@ -54,8 +95,8 @@ list_get_str (*L, *i) {
 is_compound (*resc_name) {
     *found = false
     foreach (*n in select RESC_NAME
-     where RESC_TYPE_NAME = 'compound' 
-     and RESC_NAME = '*resc_name') 
+     where RESC_TYPE_NAME = 'compound'
+     and RESC_NAME = '*resc_name')
     {
       *found = true
     }
@@ -79,7 +120,7 @@ top_or_next_lowest_in_resc_hier (*hier_string)
 }
 	#---#
 
-reverse_list (*L) 
+reverse_list (*L)
 {
   *s=size(*L)
   *M=list()
@@ -92,7 +133,7 @@ unset_All_meta_on_compound_resc (*resc_name)
 {
     msiString2KeyValPair("",*kvp)
     foreach (*rm in select META_RESC_ATTR_NAME, META_RESC_ATTR_VALUE
-     where RESC_NAME = '*resc_name' and RESC_TYPE_NAME = 'compound') 
+     where RESC_NAME = '*resc_name' and RESC_TYPE_NAME = 'compound')
     {
         *Key = *rm.META_RESC_ATTR_NAME
         *kvp.*Key = *rm.META_RESC_ATTR_VALUE
@@ -103,7 +144,7 @@ unset_All_meta_on_compound_resc (*resc_name)
 
 #=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-trim_trailing_whitespace (*strg) 
+trim_trailing_whitespace (*strg)
 {
     msiStrlen(*strg,*ln)
     *ln = int(*ln)
@@ -112,14 +153,14 @@ trim_trailing_whitespace (*strg)
     while (*ln > 0 && (*s == "\t" || *s == " " || *s == "\n")) {
       *ln = *ln - 1
       # chop off last character and get new last character
-      msiStrchop(*strg,*tmp) 
+      msiStrchop(*strg,*tmp)
       *strg = *tmp
       if (*ln > 0) {msiSubstr(*strg,str(*ln-1),"1",*s)} else {*s = ""}
     }
 *strg
 }
 
-trim_leading_whitespace (*strg) 
+trim_leading_whitespace (*strg)
 {
     msiStrlen(*strg,*ln)
     *ln = int(*ln)
@@ -143,7 +184,7 @@ trim_surrounding_whitespace (*strg) {
 # =-=-= strip off ws, *tag and '=' writing rhs value into *val  =-=-=
 # =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-get_context_value (*tag_eq_val , *tag , *val ) 
+get_context_value (*tag_eq_val , *tag , *val )
 {
     *success = false
     *kv = trim_leading_whitespace (*s)

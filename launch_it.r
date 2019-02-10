@@ -1,9 +1,7 @@
 f{test}
-test{
 
-  delay ("<PLUSET>*delaytime</PLUSET>") {
-            writeLine("serverLog","*mything")
-  }
+test{
+  delay ( *delay ++ *repeat ) { prune_cache ; writeLine("serverLog","*logString") }
 }
-input  *delaytime=$'10s',*mything=$'whatsup +++++++++++++++++++++'
+input *delay=$"<PLUSET>60s</PLUSET>",*repeat=$"<EF>60s</EF>",*logString=$' ++++ any string ++++'
 output ruleExecOut
