@@ -11,10 +11,23 @@ main{
      if (*status) { unset_meta_on_compound_resc( *comp_resc_name,*k) }
 }
 
-unset_meta_on_compound_resc( *resc_name, *kvp ) {
+unset_All_meta_on_compound_resc( *resc_name )
+{
+    msiString2KeyValPair("",*kvp)
+    foreach (*rm in select META_RESC_ATTR_NAME, META_RESC_ATTR_VALUE
+     where RESC_NAME = '*resc_name' and RESC_TYPE_NAME = 'compound')
+    {
+        *Key = *rm.META_RESC_ATTR_NAME
+        *kvp.*Key = *rm.META_RESC_ATTR_VALUE
+    }
+    *x = errorcode(msiRemoveKeyValuePairsFromObj( *kvp, *resc_name, "-R"))
+*x==0;
+}
 
-   *x = errorcode(msiRemoveKeyValuePairsFromObj( *kvp, *resc_name, "-R"))
-   if (*x == 0) { msiString2KeyValPair("",*kvp) }
+unset_meta_on_compound_resc( *resc_name, *kvp ) 
+{
+    *x = errorcode(msiRemoveKeyValuePairsFromObj( *kvp, *resc_name, "-R"))
+    if (*x == 0) { msiString2KeyValPair("",*kvp) }
 }
 
 set_meta_on_compound_resc ( *resc_name, *kvp, *set_value )
@@ -52,5 +65,7 @@ set_meta_on_compound_resc ( *resc_name, *kvp, *set_value )
 }
 
 
+
 input *comp_resc_name=$'cmp10', *sleep_secs_after_set_meta=$0, *value=$'immediate'
 output ruleExecOut
+
