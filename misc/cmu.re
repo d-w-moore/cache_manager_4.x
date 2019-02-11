@@ -1,18 +1,43 @@
 # -- config
 
-IRodsVersion() { 41 }
+IRodsVersion { 41 }
+
+# -- 
+
+prune_cache_for_compound_resource ( *compound, *unique, *stream )
+{
+    if (! set_meta_on_compound_resc (*resc_name, *kvp, *unique)) {
+        unset_meta_on_compound_resc (*resc_name, *kvp)
+    }
+    else {
+        *context_list = get_context_string_elements_for_resc (*compound)
+        *age_off_seconds = 86400
+        foreach ( *element in *context_list ) {
+            if (get_context_value (*element, "irods_cache_mgt::trim_secs_after_atime",*age_off_seconds_str)) {
+                *age_off_seconds = int ( *age_off_seconds_str )
+            }
+            #  [ else if () {} ... ] # to match other keys
+        }
+        
+        #      =-=-=-=-=-  =-=-=-=-=-  =-=-=-=-=-  =-=-=-=-=-  =-=-=-=-=-
+        # ...  further stuff for detecting & synching & trimming replicas
+        #      =-=-=-=-=-  =-=-=-=-=-  =-=-=-=-=-  =-=-=-=-=-  =-=-=-=-=-
+    }
+    unset_meta_on_compound_resc (*resc_name, *kvp)
+}
+
 
 get_cmdline_tokens(*Unique,*Stream) {
     *Stream = ""
     *Unique = ""
     *errcode = errorcode(
-      { *Unique = eval(str(*uniq))   # only source of truth for what is entered on
-        *Stream = eval(str(*stream)) # command line
+      { *Unique = str(*uniq)   # only source of truth for what is entered on
+        *Stream = str(*stream) # command line
       }
     )
-#### $ irule '*e=get_cmdline_tokens(*u,*s);*l=writeLine("stdout","*e/*u/*s")' \
-#               "*uniq=$$%*stream='serverLog'" ruleExecOut
-#--> 0/4213/serverLog
+    #### $ irule '*e=get_cmdline_tokens(*u,*s);*l=writeLine("stdout","*e/*u/*s")' \
+    #               "*uniq=$$%*stream=serverLog" ruleExecOut
+    #--> 0/4213/serverLog
 *errcode;
 }
 
@@ -37,12 +62,6 @@ prune_rule_ids_as_list(*pad_elements)
 *delaylist;
 }
 
-
-
-# schedule_cmdline(*resource) {
-#   *y= get_cmdline_pid(*pid)
-#   writeLine("stdout","errorcode = *y")
-# }
 	#---#
 
 trace_hierarchy (*cname,*map,*hier)
@@ -51,6 +70,8 @@ trace_hierarchy (*cname,*map,*hier)
   msiString2KeyValPair( "", *id2n )
   msiString2KeyValPair( "", *n2id )
   msiString2KeyValPair( "", *map )
+
+  *irodsvsn = IRodsVersion()
 
   foreach (*y in select RESC_NAME,RESC_ID,RESC_PARENT) {
      *name = *y.RESC_NAME
@@ -63,7 +84,7 @@ trace_hierarchy (*cname,*map,*hier)
   foreach (*z  in *parent ) {
       *tmp = *parent.*z  # __ in irods <= 41 this is a resource name,
       *nm = *tmp         #    but in irods >= 42 it's a numeric ID
-      if (IRodsVersion() >= 42 && *tmp != "") { *nm = *id2n.*tmp }
+      if (*irodsvsn >= 42 && *tmp != "") { *nm = *id2n.*tmp }
       *map.*z = *nm
   }
 
@@ -90,22 +111,32 @@ list_get_str (*L, *i) {
   else
       ""
 }
-	#---#
 
-is_compound (*resc_name) {
-    *found = false
-    foreach (*n in select RESC_NAME
-     where RESC_TYPE_NAME = 'compound'
-     and RESC_NAME = '*resc_name')
+find_resource_node_types (*kvp,*filter) {
+    foreach (*n in select RESC_NAME, RESC_TYPE_NAME)
     {
-      *found = true
+        *name = *n.RESC_NAME
+        *type = *n.RESC_TYPE_NAME
+        if (*filter=="" || *filter == *type) {
+            *kvp.*name = *type
+        }
     }
-*found
+*kvp
+}
+
+is_compound_resource (*name)
+{
+  find_resource_node_types(*rescl,"compound")
+  *flag = false
+  foreach (*k in *rescl) {
+    if (*k == *name) { *flag = true }
+  }
+*flag;
 }
 
         # note -- dwm -- :  for "partial hierarchy" ending in compoundName
-	# feed result of this routine to is_compound()
-        # -  if this fails, add ";*" to end, repeat is_compound()
+	# give result of following routine to is_compound_resource(*name)
+        #   if , add ";*" to end, repeat is_compound()
 
 top_or_next_lowest_in_resc_hier (*hier_string)
 {
@@ -150,7 +181,7 @@ unset_meta_on_compound_resc( *resc_name, *kvp )
 set_meta_on_compound_resc ( *resc_name, *kvp, *set_value )
 {
    *match = false
-   *Key = "irods_cache::reserve_resc"
+   *Key = "irods_cache_mgt::reserve_resc"
 
    *rescN = ""
    foreach (*x in select RESC_NAME, RESC_TYPE_NAME
@@ -220,18 +251,32 @@ trim_surrounding_whitespace (*strg) {
 }
 
 # =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+get_context_string_elements_for_resc (*rescN)
+{
+  *l = list()
+  foreach (*r in select RESC_NAME , RESC_CONTEXT where RESC_NAME = '*rescN')
+  {
+    foreach (*expr in split(*r.RESC_CONTEXT , ";"))
+    {
+      *l = cons( *expr , *l)
+    }
+  }
+*l;
+}
+
 # =-=-= strip off ws, *tag and '=' writing rhs value into *val  =-=-=
 # =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-get_context_value (*tag_eq_val , *tag , *val )
+get_context_value (*stringElement , *tag , *val )
 {
     *success = false
-    *kv = trim_leading_whitespace (*s)
-    msiStrlen( *kv, *kvlen )
+    *keqv = trim_leading_whitespace (*stringElement)
+    msiStrlen( *keqv, *keqvlen )
     msiStrlen( *tag, *taglen )
-    *eq_rhs = triml (*kv, *tag)
+    *eq_rhs = triml (*keqv, *tag)
     msiStrlen( *eq_rhs, *eq_rhs_len )
-    if (int(*eq_rhs_len) + int(*taglen) == int(*kvlen))
+    if (int(*eq_rhs_len) + int(*taglen) == int(*keqvlen))
     {
         *eqtrim = trim_leading_whitespace(*eq_rhs)
         msiStrlen(*eqtrim,*eqtrimLen)
@@ -243,4 +288,76 @@ get_context_value (*tag_eq_val , *tag , *val )
         }
     }
 *success ;
+}
+
+println (*s) { writeLine("stdout",*s) }
+
+# === 
+
+find_compound_parent_and_leaf_roles(*inpName, *isLeaf, *leaf_lookup)
+{
+    if (IRodsVersion >= 42) 
+     then  find_compound_parent_and_leaf_roles_42(*inpName, *isLeaf, *leaf_lookup)
+     else  find_compound_parent_and_leaf_roles_41(*inpName, *isLeaf, *leaf_lookup)
+}
+
+find_compound_parent_and_leaf_roles_42(*inpName, *isLeaf, *leaf_lookup)
+{
+println("\*42")
+    msiString2KeyValPair("",*idmap)
+
+    foreach (*r in select RESC_ID,RESC_NAME where RESC_TYPE_NAME = 'compound') {
+        *id = *r.RESC_ID
+        *idmap.*id = *r.RESC_NAME
+    }
+
+    *par = ""
+    foreach (*r in select RESC_NAME, RESC_PARENT_CONTEXT, RESC_PARENT
+               where RESC_PARENT_CONTEXT = 'cache' || = 'archive') 
+    {
+        *nm=""
+        foreach (*try in *idmap) {
+            if (*r.RESC_PARENT == *try) { *nm = *idmap.*try }
+        }
+        if (*nm != "") {
+            *par = *nm
+            *ctx = *r.RESC_PARENT_CONTEXT
+            *leaf_lookup.*ctx = *r.RESC_NAME
+        }
+    }
+*par;
+}
+
+find_compound_parent_and_leaf_roles_41(*inpName, *isLeaf, *leaf_lookup)
+{
+    *par=""
+    *strg=""
+    if (!*isLeaf) {
+        foreach (*x in select RESC_NAME,RESC_CHILDREN where RESC_TYPE_NAME = 'compound') {
+            if (*x.RESC_NAME == '*inpName') { 
+                *par = '*inpName'; *strg = *x.RESC_CHILDREN
+            }
+        }
+    }
+    else {
+        foreach (*x in select RESC_NAME,RESC_CHILDREN where RESC_TYPE_NAME = 'compound') {
+            *y=*x.RESC_NAME
+            *z=*x.RESC_CHILDREN
+            if (*z like '*inpName{*' || *z like '*;*inpName{*')      #--lol--}}
+            {
+                 *par = *y
+                 *strg = *z
+            }
+        }
+    }
+    foreach (*s in split(*strg,";")) {
+        *t = ""
+        if (*s like "*{cache}*") {*t = "cache"}     # *sib keys are "cache","archive"
+        if (*s like "*{archive}*") {*t = "archive"}
+        if (*t != "") {
+            *parsed = split(*s,"{")
+            *leaf_lookup.*t = elem(*parsed,0)              # *sib values are leaf names
+        }
+    }
+    *par
 }

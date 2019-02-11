@@ -1,5 +1,6 @@
 test_find_compound_parent {
-        *parent = find_compound_parent_and_leaf_roles(*inp_resc_name , *is_leaf, *leaves)
+        *is_leaf_bool = (*is_leaf != 0)
+        *parent = find_compound_parent_and_leaf_roles_vsn_41(*inp_resc_name , *is_leaf_bool, *leaves)
         if (*parent != '') { 
             writeLine("stdout","parent:   " ++ *parent)
             writeLine("stdout","cache:   " ++ *leaves.cache)
@@ -12,11 +13,11 @@ test_find_compound_parent {
 #   if we have the name of only one leaf or just the compound resource, return
 #    the name of the compound resc & output a lookup of the two children indexed by role
 
-find_compound_parent_and_leaf_roles(*inpName, *isLeaf, *leaf_lookup)
+find_compound_parent_and_leaf_roles_vsn_41 (*inpName, *isLeaf, *leaf_lookup)
 {
     *par=""
     *strg=""
-    if (*isLeaf == 0) {
+    if (*isLeaf) {
         foreach (*x in select RESC_NAME,RESC_CHILDREN where RESC_TYPE_NAME = 'compound') {
             if (*x.RESC_NAME == '*inpName') { 
                 *par = '*inpName'; *strg = *x.RESC_CHILDREN
