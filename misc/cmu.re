@@ -6,6 +6,8 @@ IRodsVersion { 41 }
 
 prune_cache_for_compound_resource ( *compound, *unique, *stream )
 {
+    # 1 ) lock resource and test successful, unlock if not
+
     if (! set_meta_on_compound_resc (*resc_name, *kvp, *unique)) {
         unset_meta_on_compound_resc (*resc_name, *kvp)
     }
@@ -18,10 +20,34 @@ prune_cache_for_compound_resource ( *compound, *unique, *stream )
             }
             #  [ else if () {} ... ] # to match other keys
         }
-        
-        #      =-=-=-=-=-  =-=-=-=-=-  =-=-=-=-=-  =-=-=-=-=-  =-=-=-=-=-
-        # ...  further stuff for detecting & synching & trimming replicas
-        #      =-=-=-=-=-  =-=-=-=-=-  =-=-=-=-=-  =-=-=-=-=-  =-=-=-=-=-
+
+    # 2 ) get hierarchy info , data usage in cache, and a list of all data objects stamped with an access time
+        trace_hierarchy( *compound, *map, *hier_string)
+        find_compound_parent_and_leaf_roles( *compound , false , *roles )
+        *full_hier_to_cache =  *hier_string ++ ";" ++ *roles.cache
+        *full_hier_to_archive =  *hier_string ++ ";" ++ *roles.archive
+
+        *bytes_used = 0.0
+        foreach (*d in select DATA_ID, DATA_NAME, DATA_SIZE, COLL_NAME, DATA_RESC_HIER where DATA_RESC_HIER = "*full_hier")
+        {
+           *bytes_used = *bytes_used + double( *d.DATA_SIZE )
+        }
+
+	msiString2KeyValPair("",*archive_replicas)
+        foreach (*d in select DATA_ID, DATA_NAME, COLL_NAME, META_DATA_ATTR_NAME, order(META_DATA_ATTR_VALUE),DATA_REPL_STATUS
+                 where DATA_RESC_HIER = "*full_hier_to_archive" and META_DATA_ATTR_NAME like "irods_cachemgr::atime::%")
+        {
+            *dataId = *d.DATA_ID
+            *archive_replicas.*dataId = *d.DATA_REPL_STATUS
+        }
+
+        foreach (*d in select DATA_ID, DATA_NAME, COLL_NAME, META_DATA_ATTR_NAME, order(META_DATA_ATTR_VALUE), DATA_PATH
+                 where DATA_RESC_HIER = "*full_hier_to_cache" and META_DATA_ATTR_NAME like "irods_cachemgr::atime::%")
+        {
+            *access_time = double(*d.META_DATA_ATTR_VALUE)
+            # ...
+        }
+
     }
     unset_meta_on_compound_resc (*resc_name, *kvp)
 }
