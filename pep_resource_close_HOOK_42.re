@@ -1,8 +1,8 @@
 
 
-pep_resource_close_pre   (*Inst, *DObj, *other)  
+pep_resource_close_post  (*Inst, *DObj, *other)  
 {
-  pep_resource_close_HOOK ( *DObj, "_pre ") 
+  pep_resource_close_HOOK ( *DObj, "_post") 
 }
 
 pep_resource_close_HOOK ( *DObj, *annotation ) 
