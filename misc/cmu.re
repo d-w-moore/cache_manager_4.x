@@ -4,7 +4,7 @@ IRodsVersion { 41 }
 
 # -- 
 
-prune_cache_for_compound_resource ( *compound, *unique, *stream )
+prune_cache_for_compound_resource_LRU ( *compound, *unique, *stream )
 {
     # 1 ) lock resource and test successful, unlock if not
 
@@ -12,46 +12,68 @@ prune_cache_for_compound_resource ( *compound, *unique, *stream )
         unset_meta_on_compound_resc (*resc_name, *kvp)
     }
     else {
+
+        msiGetIcatTime(*current_time , "unix")
         *context_list = get_context_string_elements_for_resc (*compound)
         *age_off_seconds = 86400
+
         foreach ( *element in *context_list ) {
-            if (get_context_value (*element, "irods_cache_mgt::trim_secs_after_atime",*age_off_seconds_str)) {
+            if (get_context_value (*element, "irods_cache_mgt::trim_minimum_age_seconds",*age_off_seconds_str)) {
                 *age_off_seconds = int ( *age_off_seconds_str )
             }
-            #  [ else if () {} ... ] # to match other keys
+            else if (get_context_value (*element, "irods_cache_mgt::trim_threshold_usage_bytes",*bytes_usage_str)) {
+                *bytes_usage_threshold = double( *bytes_usage_str )
+            }
         }
 
     # 2 ) get hierarchy info , data usage in cache, and a list of all data objects stamped with an access time
+
         trace_hierarchy( *compound, *map, *hier_string)
         find_compound_parent_and_leaf_roles( *compound , false , *roles )
         *full_hier_to_cache =  *hier_string ++ ";" ++ *roles.cache
         *full_hier_to_archive =  *hier_string ++ ";" ++ *roles.archive
 
         *bytes_used = 0.0
-        foreach (*d in select DATA_ID, DATA_NAME, DATA_SIZE, COLL_NAME, DATA_RESC_HIER where DATA_RESC_HIER = "*full_hier")
+        foreach (*d in select DATA_ID, DATA_NAME, DATA_SIZE, COLL_NAME, DATA_RESC_HIER where DATA_RESC_HIER = "*full_hier_to_cache")
         {
            *bytes_used = *bytes_used + double( *d.DATA_SIZE )
         }
 
-	msiString2KeyValPair("",*archive_replicas)
-        foreach (*d in select DATA_ID, DATA_NAME, COLL_NAME, META_DATA_ATTR_NAME, order(META_DATA_ATTR_VALUE),DATA_REPL_STATUS
-                 where DATA_RESC_HIER = "*full_hier_to_archive" and META_DATA_ATTR_NAME like "irods_cachemgr::atime::%")
+        if (*bytes_used > *bytes_usage_threshold )
         {
-            *dataId = *d.DATA_ID
-            *archive_replicas.*dataId = *d.DATA_REPL_STATUS
+            msiString2KeyValPair("",*archive_repl_status)
+            foreach (*d in select DATA_ID, DATA_NAME, COLL_NAME, META_DATA_ATTR_NAME, order(META_DATA_ATTR_VALUE),DATA_REPL_STATUS
+                     where DATA_RESC_HIER = "*full_hier_to_archive" and META_DATA_ATTR_NAME like "irods_cachemgr::atime::%")
+            {
+                *dataId = *d.DATA_ID
+                *archive_repl_status.*dataId = *d.DATA_REPL_STATUS
+            }
+
+            # ****
+
+            foreach (*d in select DATA_ID, DATA_NAME, COLL_NAME, META_DATA_ATTR_NAME, order(META_DATA_ATTR_VALUE), DATA_PATH
+                     where DATA_RESC_HIER = "*full_hier_to_cache" and META_DATA_ATTR_NAME like "irods_cachemgr::atime::%")
+            {
+                *access_time = double(*d.META_DATA_ATTR_VALUE)
+                if (*access_time + *age_off_seconds < *current_time) {
+                    *success = attempt_trim( *compound , *dataId, *errmsg )
+                    if (!*success)  {
+                        writeLine(*stream , *errmsg)
+                    }
+                }
+            }
         }
 
-        foreach (*d in select DATA_ID, DATA_NAME, COLL_NAME, META_DATA_ATTR_NAME, order(META_DATA_ATTR_VALUE), DATA_PATH
-                 where DATA_RESC_HIER = "*full_hier_to_cache" and META_DATA_ATTR_NAME like "irods_cachemgr::atime::%")
-        {
-            *access_time = double(*d.META_DATA_ATTR_VALUE)
-            # ...
-        }
-
+        # ****
     }
     unset_meta_on_compound_resc (*resc_name, *kvp)
 }
 
+attempt_trim (*compound, *dataid, *msgout)
+{
+
+false;
+}
 
 get_cmdline_tokens(*Unique,*Stream) {
     *Stream = ""
@@ -271,6 +293,8 @@ trim_leading_whitespace (*strg)
     }
 *strg
 }
+
+# =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
 trim_surrounding_whitespace (*strg) {
   trim_leading_whitespace( trim_trailing_whitespace( *strg ))
