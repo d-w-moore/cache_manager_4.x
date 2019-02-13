@@ -1,8 +1,25 @@
 # -- config
 
-IRodsVersion { 41 }
+IRodsVersion { 
+  41
+}
 
+threshold_for_delay_trim 
+{
+  ( 1000.0 ^ 2 ) * 500.0 # 500 Megabytes
+}
 # -- 
+
+unique_string(*rand_32_bit_int)
+{
+  *tm = "0"
+  msiGetSystemTime(*tm,"unix")
+  *bignum = 2^24
+  *uniq = int(*tm)%int(*bignum) 
+
+str(double("*rand_32_bit_int")*(*bignum) + *uniq);
+}
+
 
 prune_cache_for_compound_resource_LRU ( *compound, *unique, *stream )
 {
@@ -46,41 +63,92 @@ prune_cache_for_compound_resource_LRU ( *compound, *unique, *stream )
                      where DATA_RESC_HIER = "*full_hier_to_archive" and META_DATA_ATTR_NAME like "irods_cachemgr::atime::%")
             {
                 *dataId = *d.DATA_ID
-                *archive_repl_status.*dataId = *d.DATA_REPL_STATUS
+                *archive_repl_status.*dataId = *d.DATA_REPL_STATUS # - perhaps let attempt_trim do this ?
             }
 
             # ****
 
-            foreach (*d in select DATA_ID, DATA_NAME, COLL_NAME, META_DATA_ATTR_NAME, order(META_DATA_ATTR_VALUE), DATA_PATH
-                     where DATA_RESC_HIER = "*full_hier_to_cache" and META_DATA_ATTR_NAME like "irods_cachemgr::atime::%")
+            foreach (*d in select DATA_ID, DATA_NAME, COLL_NAME, META_DATA_ATTR_NAME, order(META_DATA_ATTR_VALUE), 
+                                  DATA_PATH, DATA_SIZE
+                     where DATA_RESC_HIER = "*full_hier_to_cache" 
+                       and META_DATA_ATTR_NAME like "irods_cachemgr::atime::%")
             {
                 *access_time = double(*d.META_DATA_ATTR_VALUE)
                 if (*access_time + *age_off_seconds < *current_time) {
-                    *success = attempt_trim( *compound , *dataId, *errmsg )
+                    *success = attempt_trim( *compound , *d.DATA_ID, *d.DATA_SIZE, *d.DATA_PATH, 
+                                             *full_hier_to_cache, *full_hier_to_archive, *errmsg )
                     if (!*success)  {
                         writeLine(*stream , *errmsg)
                     }
                 }
             }
         }
-
-        # ****
+        msiGetIcatTime(*current_icat_time, "unix")
+        tag_all_dataobjs_with_current_time (*full_hier_to_cache, *current_icat_time)
     }
     unset_meta_on_compound_resc (*resc_name, *kvp)
 }
 
-attempt_trim (*compound, *dataid, *msgout)
-{
+####################
+####################
 
-false;
+tag_all_dataobjs_with_current_time ( *cache_hier, *time)
+{
+	msiString2KeyValPairs("",*all_cache_daters)
+        foreach (*d in select DATA_ID, DATA_NAME, COLL_NAME, META_DATA_ATTR_NAME
+                  where DATA_RESC_HIER = "*cache_hier" # and META_DATA_ATTR_NAME like "irods_cachemgr::atime::%"
+                 ) {
+             *dataId = *d.DATA_ID
+             *dataName = *d.DATA_NAME
+             *collName = *d.COLL_NAME
+             *all_cache_daters.*dataId = "*collName/*dataName"
+         }
+         foreach (*d in select DATA_ID 
+                  where DATA_RESC_HIER = "*cache_hier" and META_DATA_ATTR_NAME like "irods_cachemgr::atime::%"
+                  ) {
+             *dataId = *d.DATA_ID
+             *all_cache_daters.*dataId = ""
+         }
+         foreach (*alld in *all_cache_daters) 
+         {
+              *logical_path = *all_cache_daters.*alld
+              if (*logical_path != "") {
+                  if (*all_cache_daters.*alld != "") {
+  	            *k."irods_cachemgr::atime::*alld" = *time
+                    msiSetKeyValuePairsToObj( *k, *logical_path, "-d")
+                  }
+              }
+         }
+}
+
+attempt_trim (*compound, *dataid, *datasize, *phys_path, 
+              *hier_Cache, *hier_Archive, *msgout)
+{
+    *msgout = ""
+    *status = true
+    if (double(*datasize) > threshold_for_delay_trim) {
+        # *** schedule in delay queue ; status left true => success
+        *msgout = "delayed"
+    }
+    else {
+        *so_far = true
+        # attempt a sync-to-archive operation
+        #  ... *so_far =  *so_far && (test of operation success)
+        # if successful, and archive and cache have good repl's, then attempt trim
+        if ( ! *so_far # failure
+        ) {
+            *status = false
+        }
+    }
+*status
 }
 
 get_cmdline_tokens(*Unique,*Stream) {
     *Stream = ""
     *Unique = ""
     *errcode = errorcode(
-      { *Unique = str(*uniq)   # only source of truth for what is entered on
-        *Stream = str(*stream) # command line
+      { *Unique = str(*uniq)   # gateway and src-of-truth for uniq & strm info
+        *Stream = str(*stream) # entered on command line
       }
     )
     #### $ irule '*e=get_cmdline_tokens(*u,*s);*l=writeLine("stdout","*e/*u/*s")' \
