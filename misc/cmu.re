@@ -84,7 +84,7 @@ prune_cache_for_compound_resource_LRU ( *compound, *unique, *stream )
             }
         }
         msiGetIcatTime(*current_icat_time, "unix")
-        tag_all_dataobjs_with_current_time (*full_hier_to_cache, *current_icat_time)
+        tag_atime_on_dataobjs_not_yet_tagged (*full_hier_to_cache, *current_icat_time)
     }
     unset_meta_on_compound_resc (*resc_name, *kvp)
 }
@@ -92,7 +92,7 @@ prune_cache_for_compound_resource_LRU ( *compound, *unique, *stream )
 ####################
 ####################
 
-tag_all_dataobjs_with_current_time ( *cache_hier, *time)
+tag_atime_on_dataobjs_not_yet_tagged ( *cache_hier, *time)
 {
 	msiString2KeyValPairs("",*all_cache_daters)
         foreach (*d in select DATA_ID, DATA_NAME, COLL_NAME, META_DATA_ATTR_NAME
