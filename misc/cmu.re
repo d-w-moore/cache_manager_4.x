@@ -1,37 +1,55 @@
 # -- config
 
-IRodsVersion { 
+IRodsVersion {
   41
 }
 
-threshold_for_delay_trim 
+threshold_for_delay_trim
 {
   ( 1000.0 ^ 2 ) * 500.0 # 500 Megabytes
 }
-# -- 
+# --
 
-unique_string(*rand_32_bit_int)
+# auto_schedule_cache_maintenance (*compound_resc_name)
+# {
+#
+#     *list = prune_rule_ids_as_string
+# #   iter through list, quit existing tasks (by setting contrary metadata & waiting)
+# #   *list = new list of compound rescs
+#     iter throuth list, start new tasks
+# }
+
+unique_string(*rand_32_bit_int) # use_time is "", "icat", or ["system"|"unix"|...]
 {
-  *tm = "0"
   msiGetSystemTime(*tm,"unix")
   *bignum = 2^24
-  *uniq = int(*tm)%int(*bignum) 
-
+  *uniq = int(*tm)%int(*bignum)
 str(double("*rand_32_bit_int")*(*bignum) + *uniq);
 }
 
 
-prune_cache_for_compound_resource_LRU ( *compound, *unique, *stream )
+prune(*comp_resc,*unique,*waitsecs)  {
+    *waitSec = (if "*waitsecs" == "" then "0" else "*waitsecs")
+    if (! set_meta_on_compound_resc (*comp_resc, *kvp, *unique)) {
+        unset_meta_on_compound_resc (*comp_resc, *kvp)
+    }
+    else {
+        msiSleep("*waitSec","0")
+    }
+    unset_meta_on_compound_resc (*comp_resc, *kvp)
+}
+
+prune_cache_for_compound_resource_LRU ( *comp_resc, *unique, *stream )
 {
     # 1 ) lock resource and test successful, unlock if not
 
-    if (! set_meta_on_compound_resc (*resc_name, *kvp, *unique)) {
-        unset_meta_on_compound_resc (*resc_name, *kvp)
+    if (! set_meta_on_compound_resc (*comp_resc, *kvp, *unique)) {
+        unset_meta_on_compound_resc (*comp_resc, *kvp)
     }
     else {
 
         msiGetIcatTime(*current_time , "unix")
-        *context_list = get_context_string_elements_for_resc (*compound)
+        *context_list = get_context_string_elements_for_resc (*comp_resc)
         *age_off_seconds = 86400
 
         foreach ( *element in *context_list ) {
@@ -45,8 +63,8 @@ prune_cache_for_compound_resource_LRU ( *compound, *unique, *stream )
 
     # 2 ) get hierarchy info , data usage in cache, and a list of all data objects stamped with an access time
 
-        trace_hierarchy( *compound, *map, *hier_string)
-        find_compound_parent_and_leaf_roles( *compound , false , *roles )
+        trace_hierarchy( *comp_resc, *map, *hier_string)
+        find_compound_parent_and_leaf_roles( *comp_resc , false , *roles )
         *full_hier_to_cache =  *hier_string ++ ";" ++ *roles.cache
         *full_hier_to_archive =  *hier_string ++ ";" ++ *roles.archive
 
@@ -68,14 +86,14 @@ prune_cache_for_compound_resource_LRU ( *compound, *unique, *stream )
 
             # ****
 
-            foreach (*d in select DATA_ID, DATA_NAME, COLL_NAME, META_DATA_ATTR_NAME, order(META_DATA_ATTR_VALUE), 
+            foreach (*d in select DATA_ID, DATA_NAME, COLL_NAME, META_DATA_ATTR_NAME, order(META_DATA_ATTR_VALUE),
                                   DATA_PATH, DATA_SIZE
-                     where DATA_RESC_HIER = "*full_hier_to_cache" 
+                     where DATA_RESC_HIER = "*full_hier_to_cache"
                        and META_DATA_ATTR_NAME like "irods_cachemgr::atime::%")
             {
                 *access_time = double(*d.META_DATA_ATTR_VALUE)
                 if (*access_time + *age_off_seconds < *current_time) {
-                    *success = attempt_trim( *compound , *d.DATA_ID, *d.DATA_SIZE, *d.DATA_PATH, 
+                    *success = attempt_trim( *comp_resc , *d.DATA_ID, *d.DATA_SIZE, *d.DATA_PATH,
                                              *full_hier_to_cache, *full_hier_to_archive, *errmsg )
                     if (!*success)  {
                         writeLine(*stream , *errmsg)
@@ -86,7 +104,7 @@ prune_cache_for_compound_resource_LRU ( *compound, *unique, *stream )
         msiGetIcatTime(*current_icat_time, "unix")
         tag_atime_on_dataobjs_not_yet_tagged (*full_hier_to_cache, *current_icat_time)
     }
-    unset_meta_on_compound_resc (*resc_name, *kvp)
+    unset_meta_on_compound_resc (*comp_resc, *kvp)
 }
 
 ####################
@@ -94,26 +112,26 @@ prune_cache_for_compound_resource_LRU ( *compound, *unique, *stream )
 
 tag_atime_on_dataobjs_not_yet_tagged ( *cache_hier, *time)
 {
-	msiString2KeyValPairs("",*all_cache_daters)
-        foreach (*d in select DATA_ID, DATA_NAME, COLL_NAME, META_DATA_ATTR_NAME
-                  where DATA_RESC_HIER = "*cache_hier" # and META_DATA_ATTR_NAME like "irods_cachemgr::atime::%"
+	msiString2KeyValPairs("",*all_cache_dataobjs)
+        foreach (*d in select DATA_ID, DATA_NAME, COLL_NAME, META_DATA_ATTR_NAME 
+                 where DATA_RESC_HIER = "*cache_hier"
                  ) {
              *dataId = *d.DATA_ID
              *dataName = *d.DATA_NAME
              *collName = *d.COLL_NAME
-             *all_cache_daters.*dataId = "*collName/*dataName"
+             *all_cache_datobjs.*dataId = "*collName/*dataName"
          }
-         foreach (*d in select DATA_ID 
+         foreach (*d in select DATA_ID
                   where DATA_RESC_HIER = "*cache_hier" and META_DATA_ATTR_NAME like "irods_cachemgr::atime::%"
                   ) {
              *dataId = *d.DATA_ID
-             *all_cache_daters.*dataId = ""
+             *all_cache_datobjs.*dataId = ""
          }
-         foreach (*alld in *all_cache_daters) 
+         foreach (*alld in *all_cache_datobjs)
          {
-              *logical_path = *all_cache_daters.*alld
+              *logical_path = *all_cache_datobjs.*alld
               if (*logical_path != "") {
-                  if (*all_cache_daters.*alld != "") {
+                  if (*all_cache_datobjs.*alld != "") {
   	            *k."irods_cachemgr::atime::*alld" = *time
                     msiSetKeyValuePairsToObj( *k, *logical_path, "-d")
                   }
@@ -121,7 +139,7 @@ tag_atime_on_dataobjs_not_yet_tagged ( *cache_hier, *time)
          }
 }
 
-attempt_trim (*compound, *dataid, *datasize, *phys_path, 
+attempt_trim (*compound, *dataid, *datasize, *phys_path,
               *hier_Cache, *hier_Archive, *msgout)
 {
     *msgout = ""
@@ -146,35 +164,28 @@ attempt_trim (*compound, *dataid, *datasize, *phys_path,
 get_cmdline_tokens(*Unique,*Stream) {
     *Stream = ""
     *Unique = ""
-    *errcode = errorcode(
-      { *Unique = str(*uniq)   # gateway and src-of-truth for uniq & strm info
-        *Stream = str(*stream) # entered on command line
-      }
-    )
+    *errcode1 = errorcode( { *Unique = str(*uniq)   } )   # gateway and src-of-truth for uniq & strm info
+    *errcode2 = errorcode( { *Stream = str(*stream) } ) # entered on command line
     #### $ irule '*e=get_cmdline_tokens(*u,*s);*l=writeLine("stdout","*e/*u/*s")' \
     #               "*uniq=$$%*stream=serverLog" ruleExecOut
     #--> 0/4213/serverLog
-*errcode;
+if (*errcode1 != 0) then *errcode1 else *errcode2;
 }
 
 prune_cache { writeLine ("serverLog", "dummy_prune_cache_Routine") }
 
 #---
 
-prune_rule_ids_as_string(*p) { str( rule_ids_as_list(*p)) }
+prune_rule_ids_as_string(*pad,*lkstring) { str( prune_rule_ids_as_list(*pad,*lkstring)) }
 
-prune_rule_ids_as_list(*pad_elements)
+prune_rule_ids_as_list(*padElements,*likePattern)
 {
-    *delaylist = if *pad_elements then list("") else list()
-
-    foreach (*rule in select RULE_EXEC_ID,RULE_EXEC_NAME) {
-       if ( *rule.RULE_EXEC_NAME like "\*prune_cache*") {
+    if (*likePattern == "") { *likePattern =  "%prune\\_cache%" }
+    *delaylist = if *padElements then list("") else list()
+    foreach (*rule in select RULE_EXEC_ID,RULE_EXEC_NAME where RULE_EXEC_NAME like "*likePattern") {
          *delaylist = cons( *rule.RULE_EXEC_ID , *delaylist )
-       }
     }
-
-    if (*pad_elements) { *delaylist=cons("",*delaylist) }
-
+    if (*padElements) { *delaylist=cons("",*delaylist) }
 *delaylist;
 }
 
@@ -410,11 +421,11 @@ get_context_value (*stringElement , *tag , *val )
 
 println (*s) { writeLine("stdout",*s) }
 
-# === 
+# ===
 
 find_compound_parent_and_leaf_roles(*inpName, *isLeaf, *leaf_lookup)
 {
-    if (IRodsVersion >= 42) 
+    if (IRodsVersion >= 42)
      then  find_compound_parent_and_leaf_roles_42(*inpName, *isLeaf, *leaf_lookup)
      else  find_compound_parent_and_leaf_roles_41(*inpName, *isLeaf, *leaf_lookup)
 }
@@ -431,7 +442,7 @@ println("\*42")
 
     *par = ""
     foreach (*r in select RESC_NAME, RESC_PARENT_CONTEXT, RESC_PARENT
-               where RESC_PARENT_CONTEXT = 'cache' || = 'archive') 
+               where RESC_PARENT_CONTEXT = 'cache' || = 'archive')
     {
         *nm=""
         foreach (*try in *idmap) {
@@ -452,7 +463,7 @@ find_compound_parent_and_leaf_roles_41(*inpName, *isLeaf, *leaf_lookup)
     *strg=""
     if (!*isLeaf) {
         foreach (*x in select RESC_NAME,RESC_CHILDREN where RESC_TYPE_NAME = 'compound') {
-            if (*x.RESC_NAME == '*inpName') { 
+            if (*x.RESC_NAME == '*inpName') {
                 *par = '*inpName'; *strg = *x.RESC_CHILDREN
             }
         }
