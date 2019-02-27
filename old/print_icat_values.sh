@@ -29,18 +29,20 @@ fi
 # 13367
 #  # will hve to do RULE_EXEC_ID = 'a' || = 'b' || = 'c' ... (in irule)
 
- '/[][]/{ X="" } ; $1~/[0-9]+/{sub("[0-9]+",X" = \047&\047,",$1);print $1;X=" ||"}'
+## '/[][]/{ X="" } ; $1~/[0-9]+/{sub("[0-9]+",X" = \047&\047,",$1);print $1;X=" ||"}'
 
 Y=$(
-  irule 'writeLine("stdout",prune_rule_ids_as_string(true,""))' null ruleExecOut|tr , \\012|awk -f oreq.awk
+  irule 'writeLine("stdout",prune_rule_ids_as_string(true,"%"))' null ruleExecOut|tr , \\012|awk -f $(dirname "$0")/oreq.awk
 )
-irule "
-  foreach (*rule in select RULE_EXEC_ID,RULE_EXEC_NAME where RULE_EXEC_ID $Y) {
-    writeLine('stdout',*rule.RULE_EXEC_NAME ++ ' -> ' ++ *rule.RULE_EXEC_ID)
-  }"  null ruleExecOut
+printf  $'%s\n' "$Y"
+#if [ $1 = printrule ]; then
+#  irule "
+#  foreach (*rule in select RULE_EXEC_ID,RULE_EXEC_NAME where RULE_EXEC_ID $Y) {
+#    writeLine('stdout',*rule.RULE_EXEC_NAME ++ ' -> ' ++ *rule.RULE_EXEC_ID)
+#  }"  null ruleExecOut
+#X=$(((RANDOM<<16)^$$));irule '*u=unique_string('$X')prune("cmp10","*u","2")' null ruleExecOut
+#fi
 
-X=$(((RANDOM<<16)+$$));irule '*u=unique_string('$X')prune("cmp10","*u","2")' null ruleExecOut
-
-#X=$(((RANDOM<<16)+$$))
-irule ' *u=unique_string(0)prune("cmp10","*u","2")' null ruleExecOut
+#X=$(((RANDOM<<16)^$$))
+#irule ' *u=unique_string(0)prune("cmp10","*u","2")' null ruleExecOut
 
