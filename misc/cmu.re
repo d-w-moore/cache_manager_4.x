@@ -251,13 +251,21 @@ find_resource_node_types (*kvp,*filter) {
 *kvp
 }
 
+all_compound_resources ()
+{
+    foreach (*c in select RESC_NAME where RESC_TYPE_NAME = 'compound') {
+        *n = *c.RESC_NAME
+        writeLine("stdout","*n")
+    }
+}
+
 is_compound_resource (*name)
 {
-  find_resource_node_types(*rescl,"compound")
-  *flag = false
-  foreach (*k in *rescl) {
-    if (*k == *name) { *flag = true }
-  }
+    find_resource_node_types(*rescl,"compound")
+    *flag = false
+    foreach (*k in *rescl) {
+        if (*k == *name) { *flag = true }
+    }
 *flag;
 }
 
