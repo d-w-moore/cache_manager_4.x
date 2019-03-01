@@ -1,26 +1,16 @@
-# -- config
+# -- begin configuration
 
-IRodsVersion {
-41
-}
+IRodsVersion { 41 }
 
-reserved_for_cache_mgt_meta_key { "irods_cache_mgt::reserve_resc" }
+cache_task_reserve_key { "irods_cache_mgt::reserve_resc" }
 
 threshold_for_delay_trim { ( 1000.0 ^ 2 ) * 500.0 } # bytes
 
-#auto_schedule_cache_maintenance (*compound_resc_name)
-#{
-#
-#   *list = prune_rule_ids_as_string
-##  iter through list, quit existing tasks (by setting contrary metadata & waiting)
-##  *list = new list of compound rescs
-#    iter throuth list, start new tasks
-# }
+default_trim_age { 86400 }
 
-# DWM make rule to create delayed rule
-#      call with irule
-#      observe new name
-unique_string(*rand_32_bit_int) # use_time is "", "icat", or ["system"|"unix"|...]
+# -- end configuration
+
+unique_string(*rand_32_bit_int)
 {
   msiGetSystemTime(*tm,"unix")
   *bignum = 2^24
@@ -28,17 +18,32 @@ unique_string(*rand_32_bit_int) # use_time is "", "icat", or ["system"|"unix"|..
 str(double("*rand_32_bit_int")*(*bignum) + *uniq);
 }
 
+launch_prune_operation(*resc)
+{
+  get_cmdline_tokens(*U,*S)
+  writeLine("stdout","[*U] [*S]")
+  if (double(*U) == 0) {
+    *S="serverLog"
+    delay("<PLUSET>1s</PLUSET><EF>30s</EF>"){
+      prune_cache_test (*resc, unique_string(*U), "10")  #stream
+    }
+  }
+  else {
+      prune_cache_test (*resc, unique_string(*U), "10")  #stream
+  }
+}
+## -> a mini-test of the real prune_cache routine
+
 prune_cache_test(*comp_resc,*unique,*waitsecs)
 {
+    *stream = (if int(*unique) == 0 then "stdout"  else "serverLog")
     *waitSec = (if "*waitsecs" == "" then "0" else "*waitsecs")
-    if (! set_meta_on_compound_resc (*comp_resc, *kvp, *unique)) {
-        unset_meta_on_compound_resc (*comp_resc, *kvp)
-    }
-    else {
+    if (set_meta_on_compound_resc (*comp_resc, *kvp, *unique))
+    {
         #msiSleep("*waitSec","0")
         for (*i=0;*i<2;*i=*i+1) {
             msiSleep(str( int(int("*waitSec")/2)) ,"0")
-         #writeLine("stdout","--> [*i] loop")
+            #writeLine("*stream","--> [*i] loop")
             if (*i == 0 && 0 > test_meta_on_compound_resc(*comp_resc, *kvp, *unique)) { break }
         }
     }
@@ -49,21 +54,19 @@ prune_cache_for_compound_resource_LRU ( *comp_resc, *unique, *stream )
 {
     # 1 ) lock resource and test successful, unlock if not
 
-    if (! set_meta_on_compound_resc (*comp_resc, *kvp, *unique)) {
-        unset_meta_on_compound_resc (*comp_resc, *kvp)
-    }
-    else {
+    if (set_meta_on_compound_resc (*comp_resc, *kvp, *unique)) {
 
         msiGetIcatTime(*current_time , "unix")
         *context_list = get_context_string_elements_for_resc (*comp_resc)
-        *age_off_seconds = 86400
+        *age_off_seconds = default_trim_age()
+        *bytes_usage_threshold  = -1.0;
 
         foreach ( *element in *context_list ) {
-            if (get_context_value (*element, "irods_cache_mgt::trim_minimum_age_seconds",*age_off_seconds_str)) {
-                *age_off_seconds = int ( *age_off_seconds_str )
+            if (get_context_value (*element, "irods_cache_mgt::trim_minimum_age",*age_off_seconds_str)) {
+                *age_off_seconds = int(abs(int(*age_off_seconds_str)))
             }
-            else if (get_context_value (*element, "irods_cache_mgt::trim_threshold_usage_bytes",*bytes_usage_str)) {
-                *bytes_usage_threshold = double( *bytes_usage_str )
+            else if (get_context_value (*element, "irods_cache_mgt::trim_threshold_usage",*bytes_usage_str)) {
+                *bytes_usage_threshold = abs(double(*bytes_usage_str))
             }
         }
 
@@ -75,24 +78,29 @@ prune_cache_for_compound_resource_LRU ( *comp_resc, *unique, *stream )
         *full_hier_to_archive =  *hier_string ++ ";" ++ *roles.archive
 
         *bytes_used = 0.0
-        foreach (*d in select DATA_ID, DATA_NAME, DATA_SIZE, COLL_NAME, DATA_RESC_HIER where DATA_RESC_HIER = "*full_hier_to_cache")
-        {
-           *bytes_used = *bytes_used + double( *d.DATA_SIZE )
+        if (*bytes_usage_threshold  > 0.0 ) {
+          foreach (*d in select DATA_ID, DATA_NAME, DATA_SIZE, COLL_NAME, DATA_RESC_HIER
+                   where DATA_RESC_HIER = "*full_hier_to_cache")
+          {  # check DATA_REPL_STATUS for cache copy?
+             *bytes_used = *bytes_used + double( *d.DATA_SIZE )
+          }
         }
 
         if (*bytes_used > *bytes_usage_threshold )
         {
             msiString2KeyValPair("",*archive_repl_status)
+
             foreach (*ar in select DATA_ID, DATA_NAME, COLL_NAME, META_DATA_ATTR_NAME, order(META_DATA_ATTR_VALUE),DATA_REPL_STATUS
-                     where DATA_RESC_HIER = "*full_hier_to_archive" and META_DATA_ATTR_NAME like "irods_cachemgr::atime::%")
+                     where DATA_RESC_HIER = "*full_hier_to_archive" and META_DATA_ATTR_NAME like "irods_cache_mgt::atime::%")
             {
                 *dataId = *ar.DATA_ID
                 *archive_repl_status.*dataId = *ar.DATA_REPL_STATUS
             }
+
             foreach (*ch in select DATA_ID, DATA_NAME, COLL_NAME, META_DATA_ATTR_NAME, order(META_DATA_ATTR_VALUE),
                                   DATA_PATH, DATA_SIZE
                      where DATA_RESC_HIER = "*full_hier_to_cache"
-                       and META_DATA_ATTR_NAME like "irods_cachemgr::atime::%")
+                       and META_DATA_ATTR_NAME like "irods_cache_mgt::atime::%")
             {
                 *access_time = double(*ch.META_DATA_ATTR_VALUE)
                 if (*access_time + *age_off_seconds < *current_time) {
@@ -115,10 +123,11 @@ prune_cache_for_compound_resource_LRU ( *comp_resc, *unique, *stream )
 ####################
 ####################
 
-is_eligible_for_trim (*rescName,*dataId,*archStatus) { 
+is_eligible_for_trim (*rescName,*dataId,*archStatus) {
   if (*archStatus == '0') {
      #msisync....
   }
+#return
   true
 }
 
@@ -134,7 +143,7 @@ tag_atime_on_dataobjs_not_yet_tagged ( *cache_hier, *time)
              *all_cache_datobjs.*dataId = "*collName/*dataName"
          }
          foreach (*d in select DATA_ID
-                  where DATA_RESC_HIER = "*cache_hier" and META_DATA_ATTR_NAME like "irods_cachemgr::atime::%"
+                  where DATA_RESC_HIER = "*cache_hier" and META_DATA_ATTR_NAME like "irods_cache_mgt::atime::%"
                   ) {
              *dataId = *d.DATA_ID
              *all_cache_datobjs.*dataId = ""
@@ -144,7 +153,7 @@ tag_atime_on_dataobjs_not_yet_tagged ( *cache_hier, *time)
               *logical_path = *all_cache_datobjs.*alld
               if (*logical_path != "") {
                   if (*all_cache_datobjs.*alld != "") {
-  	            *k."irods_cachemgr::atime::*alld" = *time
+  	            *k."irods_cache_mgt::atime::*alld" = *time
                     msiSetKeyValuePairsToObj( *k, *logical_path, "-d")
                   }
               }
@@ -157,7 +166,7 @@ attempt_trim (*compound, *dataid, *datasize, *phys_path,
     *msgout = ""
     *status = true
     if (double(*datasize) > threshold_for_delay_trim) {
-        # *** schedule in delay queue ; status left true => success
+        # *** schedule in delay queue ; leave status true for success
         *msgout = "delayed"
     }
     else {
@@ -203,7 +212,6 @@ prune_rule_ids_as_list(*padElements,*likePattern)
     if (*padElements) { *delaylist=cons("",*delaylist) }
 *delaylist;
 }
-
 	#---#
 
 trace_hierarchy (*cname,*map,*hier)
@@ -270,7 +278,7 @@ enum_compound_resources (*console_stream, *print_busy_tag)
 {
     msiString2KeyValPair("",*retval)
     *Key = ""
-    if (*print_busy_tag) { *Key = reserved_for_cache_mgt_meta_key }
+    if (*print_busy_tag) { *Key = cache_task_reserve_key }
     foreach (*c in select RESC_NAME where RESC_TYPE_NAME = 'compound')
     {
         *n = *c.RESC_NAME
@@ -345,7 +353,7 @@ unset_meta_on_compound_resc( *resc_name, *kvp )
 test_meta_on_compound_resc ( *resc_name, *kvp, *test_value )
 {
   *match = 0
-  *Key = reserved_for_cache_mgt_meta_key
+  *Key = cache_task_reserve_key
   foreach (*x in select RESC_NAME, META_RESC_ATTR_VALUE
            where META_RESC_ATTR_NAME =  '*Key' and RESC_NAME = '*resc_name'
              and META_RESC_ATTR_VALUE = '*test_value' || = '~*test_value' )
@@ -354,14 +362,15 @@ test_meta_on_compound_resc ( *resc_name, *kvp, *test_value )
     msiSubstr(*val,"0","1",*v1st);
     if (*v1st == "~") { *match = -1 } else { *match = 1 }
   }
-  if (*match < 0) {msiString2KeyValPair("*Key=~*test_value",*kvp) }
+  #if (*match < 0) {msiString2KeyValPair("*Key=~*test_value",*kvp) }
+  if (*match < 1) {msiString2KeyValPair("",*kvp) }
 *match
 }
 
 set_meta_on_compound_resc ( *resc_name, *kvp, *set_value )
 {
    *match = false
-   *Key = reserved_for_cache_mgt_meta_key
+   *Key = cache_task_reserve_key
 
    *rescN = ""
    foreach (*x in select RESC_NAME, RESC_TYPE_NAME
@@ -388,7 +397,7 @@ set_meta_on_compound_resc ( *resc_name, *kvp, *set_value )
        }
    }
    if (!*match) { msiString2KeyValPair("",*kvp) }
-   # return : bool value  (successful set without collision)
+   # return : bool value (successful metadata set without collision)
    *match && size(*unequal) < 1
 }
 
