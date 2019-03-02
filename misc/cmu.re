@@ -10,29 +10,18 @@ default_trim_age { 86400 }
 
 # -- end configuration
 
-unique_string(*rand_32_bit_int)
+calculate_unique {
+   get_cmdline_tokens(*u,*s)
+   unique_number(*u)
+}
+
+unique_number(*rand_32_bit_int)
 {
   msiGetSystemTime(*tm,"unix")
   *bignum = 2^24
   *uniq = int(*tm)%int(*bignum)
 str(double("*rand_32_bit_int")*(*bignum) + *uniq);
 }
-
-launch_prune_operation(*resc)
-{
-  get_cmdline_tokens(*U,*S)
-  writeLine("stdout","[*U] [*S]")
-  if (double(*U) == 0) {
-    *S="serverLog"
-    delay("<PLUSET>1s</PLUSET><EF>30s</EF>"){
-      prune_cache_test (*resc, unique_string(*U), "10")  #stream
-    }
-  }
-  else {
-      prune_cache_test (*resc, unique_string(*U), "10")  #stream
-  }
-}
-## -> a mini-test of the real prune_cache routine
 
 prune_cache_test(*comp_resc,*unique,*waitsecs)
 {

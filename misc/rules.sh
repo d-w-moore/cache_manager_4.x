@@ -1,5 +1,7 @@
 #!/bin/bash
 
+ROUTINE=prune_cache_test
+
 resc_meta_key=$(irule 'writeLine("stdout",cache_task_reserve_key)' null ruleExecOut)
 
 query_format() {
@@ -23,7 +25,7 @@ rule_pattern="%prune_cache%(\"$rescName\"%"
 Resc_List=""
 
 select name in list-compound-{short,long} chg-rescs \
-               run-schedule del-rules \
+               run-schedule run-now del-rules \
                list-rules interrupt quit
 do
   case $name in
@@ -35,22 +37,34 @@ do
       irule 'enum_compound_resources("stdout",true)' null ruleExecOut
       ;;
     chg-rescs)
-      read -p "enter resources list >> " Resc_List
+      LIST_ALL=$(irule 'enum_compound_resources("stdout",false)' null ruleExecOut)
+      echo >&2 "___ Current Resc_List ($Resc_List) ___ "
+      read -p "enter resources list >> " New_Resc_List
+      case $New_Resc_List in 
+        \*)  Resc_List=$LIST_ALL;;
+        \-*) Resc_List="" ;;
+        "")  ;;
+        *)   Resc_List=$New_Resc_List;;
+      esac
       ;;
     run-schedule)
-      for resc in $Resc_List; do
-        rules_running=$(list_rules_from_pattern "%prune_cache%\"$resc\"%" column)
+      for Resc in $Resc_List; do
+        rules_running=$(list_rules_from_pattern "%prune_cache%\"$Resc\"%" column)
         if [ -n "$rules_running" ]; then echo >&2 "*** '$resc' already scheduled" ; break; fi
-        irule 'delay("<PLUSET>30s</PLUSET><EF>30</EF>") {prune_cache_test("'$resc'","'0'","15")}' null null 
-#       irule 'launch_prune_operation("'$resc'")' null null 
+        STREAM=serverLog
+        UNIQ=$(irule "writeLine('stdout',calculate_unique())"  "*stream=$STREAM%*uniq=0" ruleExecOut)
+        echo >&2 "unique tag = $UNIQ"
+        irule 'delay("<PLUSET>30s</PLUSET><EF>30</EF>") {'$ROUTINE'("'$Resc'","'$UNIQ'","15")}' null null 
       done
       ;;
     run-now)
       MetaId=$(((RANDOM<<16)^$$))
-      for Resc in $Resc_List
-      do
-        #irule 'launch_prune("'$Resc'","'$MetaId'","15")}' null null
-        irule "launch_prune_operation('$Resc')"  "'*stream=stdout%*uniq=$MetaId'" null
+      echo >&2 "Sleeping to ensure unique timepoint for metadata tags ... " ; sleep 3; echo "done"
+      for Resc in $Resc_List; do
+        STREAM=stdout
+        UNIQ=$(irule "writeLine('stdout',calculate_unique())"  "*stream=$STREAM%*uniq=$MetaId" ruleExecOut)
+        echo >&2 "unique tag = $UNIQ"
+        irule $ROUTINE'("'$Resc'","'$UNIQ'","15")}' null ruleExecOut
       done;;
     interrupt)
       exec 9</dev/tty
@@ -64,7 +78,7 @@ do
             esac
           done
         done
-      exec 9<&-
+      exec 9<&- # destroy keyboard connection
       ;;
     list-scheduled-by-resc)
       for $resc in Resc_List; do
@@ -84,6 +98,7 @@ do
     del-rules)
       for Resc in  $Resc_List; do :
         rules_to_delete=$(list_rules_from_pattern "%prune_cache%\"$Resc\"%" column)
+        echo -n "rule(s) $rules_to_delete: "
         read -p 'delete (Y|N)? '  response
         case $response in 
           [yY]*) iqdel $rules_to_delete && echo '** success';; 
