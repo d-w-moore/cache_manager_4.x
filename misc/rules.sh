@@ -1,6 +1,8 @@
 #!/bin/bash
 
 ROUTINE=prune_cache_test
+[ $# -ge 1 ] && Resc_List="$1"
+: ${Resc_List:=""}
 
 resc_meta_key=$(irule 'writeLine("stdout",cache_task_reserve_key)' null ruleExecOut)
 
@@ -22,11 +24,9 @@ list_rules_from_pattern() {
 
 rule_pattern="%prune_cache%(\"$rescName\"%"
 
-Resc_List=""
 
-select name in list-compound-{short,long} chg-rescs \
-               run-schedule run-now del-rules \
-               list-rules interrupt quit
+select name in quit list-compound-{short,long} chg-rescs run-schedule run-now \
+               del-rules del-meta list-rules interrupt
 do
   case $name in
     list-compound-short)
@@ -38,6 +38,7 @@ do
       ;;
     chg-rescs)
       LIST_ALL=$(irule 'enum_compound_resources("stdout",false)' null ruleExecOut)
+      LIST_ALL=$(echo $LIST_ALL)
       echo >&2 "___ Current Resc_List ($Resc_List) ___ "
       read -p "enter resources list >> " New_Resc_List
       case $New_Resc_List in 
@@ -50,7 +51,7 @@ do
     run-schedule)
       for Resc in $Resc_List; do
         rules_running=$(list_rules_from_pattern "%prune_cache%\"$Resc\"%" column)
-        if [ -n "$rules_running" ]; then echo >&2 "*** '$resc' already scheduled" ; break; fi
+        if [ -n "$rules_running" ]; then echo >&2 "*** '$Resc' already scheduled" ; break; fi
         STREAM=serverLog
         UNIQ=$(irule "writeLine('stdout',calculate_unique())"  "*stream=$STREAM%*uniq=0" ruleExecOut)
         echo >&2 "unique tag = $UNIQ"
@@ -64,7 +65,7 @@ do
         STREAM=stdout
         UNIQ=$(irule "writeLine('stdout',calculate_unique())"  "*stream=$STREAM%*uniq=$MetaId" ruleExecOut)
         echo >&2 "unique tag = $UNIQ"
-        irule $ROUTINE'("'$Resc'","'$UNIQ'","15")}' null ruleExecOut
+        irule $ROUTINE'("'$Resc'","'$UNIQ'","15")' null ruleExecOut
       done;;
     interrupt)
       exec 9</dev/tty
@@ -81,9 +82,9 @@ do
       exec 9<&- # destroy keyboard connection
       ;;
     list-scheduled-by-resc)
-      for $resc in Resc_List; do
+      for $Resc in Resc_List; do
         echo -n Resc '===> '
-        rules_running=$(list_rules_from_pattern "%prune_cache%\"$resc\"%" column)
+        rules_running=$(list_rules_from_pattern "%prune_cache%\"$Resc\"%" column)
         echo "( $rules_running )"
       done
       ;;
@@ -98,8 +99,9 @@ do
     del-rules)
       for Resc in  $Resc_List; do :
         rules_to_delete=$(list_rules_from_pattern "%prune_cache%\"$Resc\"%" column)
-        echo -n "rule(s) $rules_to_delete: "
-        read -p 'delete (Y|N)? '  response
+        response='n'
+        Prompt="Rules for $Resc : $rules_to_delete"
+        [ -n "$rules_to_delete" ] && read -p "$Prompt ; delete (Y|N)? " response
         case $response in 
           [yY]*) iqdel $rules_to_delete && echo '** success';; 
         esac

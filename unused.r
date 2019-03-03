@@ -17,3 +17,15 @@ doubleToThreshold(*ms,*thresh_ms,*sleep)
   *ms = *y
 }
 
+unset_All_meta_on_compound_resc (*resc_name)
+{
+    msiString2KeyValPair("",*kvp)
+    foreach (*rm in select META_RESC_ATTR_NAME, META_RESC_ATTR_VALUE
+     where RESC_NAME = '*resc_name' and RESC_TYPE_NAME = 'compound')
+    {
+        *Key = *rm.META_RESC_ATTR_NAME
+        *kvp.*Key = *rm.META_RESC_ATTR_VALUE
+    }
+    *x = errorcode(msiRemoveKeyValuePairsFromObj( *kvp, *resc_name, "-R"))
+*x==0;
+}
