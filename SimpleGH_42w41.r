@@ -23,7 +23,7 @@ testmain {
 #            # -- get cache repl_num for trim
              foreach (*getrepl in select DATA_REPL_NUM
                                where DATA_NAME = '*D' and COLL_NAME = '*C'
-                               and DATA_RESC_NAME = '*cchname')
+                               and DATA_RESC_HIER like '%;*cchname')
              {
                *cache_replnum = *getrepl.DATA_REPL_NUM
              }
@@ -31,13 +31,13 @@ testmain {
                writeLine("stdout","TRIM repl from CACHE: number is " ++ "*cache_replnum")
                msiDataObjTrim('*C/*D','null','*cache_replnum','1','1',*trim_status)
                writeLine("stdout","--- trim status = [*trim_status]")
-             }
+             } else { writeLine("stdout", "************** NULL cache replnum ******************") }
            }
        } else {
          writeLine("stdout","skipping ...")
        }
-       writeLine("stdout","msisync_to_archive('*h', '*P', '*C/*D')")
-       writeLine("stdout","msiDataObjTrim('*C/*D','null','','1',\*st)")
+       writeLine("stdout","commands - msisync_to_archive('*h', '*P', '*C/*D')")
+       writeLine("stdout","           msiDataObjTrim('*C/*D','null','*cache_replnum','1','1',\*trim_status)")
    }
 }
 
