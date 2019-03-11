@@ -41,32 +41,30 @@ prune_cache_test(*comp_resc,*unique,*waitsecs)
 
 prune_cache_for_compound_resource_LRU ( *comp_resc, *unique, *stream )
 {
-
     if (set_meta_on_compound_resc (*comp_resc, *kvp, *unique)) {
 
-        # 1 ) if able to lock resource :
-
+#       # 1 ) if able to lock resource :
         msiGetIcatTime(*current_time , "unix")
         *context_list = get_context_string_elements_for_resc (*comp_resc)
-        *age_off_seconds = default_trim_age()
+        *age_off_seconds_str = str(default_trim_age)
         *bytes_usage_threshold  = -1.0;
-
+#
         foreach ( *element in *context_list ) {
             if (get_context_value (*element, "irods_cache_mgt::trim_minimum_age",*age_off_seconds_str)) {
                 *age_off_seconds = int(abs(int(*age_off_seconds_str)))
+                if (*age_off_seconds < 25) { *age_off_seconds = 25 }
             }
             else if (get_context_value (*element, "irods_cache_mgt::trim_threshold_usage",*bytes_usage_str)) {
                 *bytes_usage_threshold = abs(double(*bytes_usage_str))
             }
         }
-
+ 
         # 2 ) get hierarchy info , data usage in cache, and a list of all data objects stamped with an access time
-
+ 
         trace_hierarchy( *comp_resc, *map, *hier_string)
         find_compound_parent_and_leaf_roles( *comp_resc , false , *roles )
         *full_hier_to_cache =  *hier_string ++ ";" ++ *roles.cache
         *full_hier_to_archive =  *hier_string ++ ";" ++ *roles.archive
-
         *bytes_used = 0.0
         if (*bytes_usage_threshold  > 0.0 ) {
           foreach (*d in select DATA_ID, DATA_NAME, DATA_SIZE, COLL_NAME, DATA_RESC_HIER, DATA_REPL_STATUS
@@ -75,35 +73,35 @@ prune_cache_for_compound_resource_LRU ( *comp_resc, *unique, *stream )
              *bytes_used = *bytes_used + double( *d.DATA_SIZE )
           }
         }
+#writeLine(*stream, "bytes_used *bytes_used")
 
         if (*bytes_used > *bytes_usage_threshold )
         {
             msiString2KeyValPair("",*archive_repl_status)
-
             foreach (*ar in select DATA_ID, DATA_NAME, COLL_NAME, META_DATA_ATTR_NAME, order(META_DATA_ATTR_VALUE),DATA_REPL_STATUS
-                     where DATA_RESC_HIER = "*full_hier_to_archive" and META_DATA_ATTR_NAME like "irods_cache_mgt::atime::%")
+                     where DATA_RESC_HIER = "*full_hier_to_archive" and META_DATA_ATTR_NAME like "irods_cache_mgt::atime::*full_hier_to_cache")
             {
                 *dataId = *ar.DATA_ID
                 *archive_repl_status.*dataId = *ar.DATA_REPL_STATUS
             }
-
             *try_more_trims = true
             foreach (*ch in select DATA_ID, DATA_NAME, COLL_NAME, META_DATA_ATTR_NAME, order(META_DATA_ATTR_VALUE),
-                                  DATA_PATH, DATA_SIZE
+                                  DATA_PATH, DATA_SIZE, DATA_REPL_STATUS
                      where DATA_RESC_HIER = "*full_hier_to_cache"
-                       and META_DATA_ATTR_NAME like "irods_cache_mgt::atime::%")
+                       and META_DATA_ATTR_NAME like "irods_cache_mgt::atime::*full_hier_to_cache")
             {
                 if (*try_more_trims) {
                     *access_time = double(*ch.META_DATA_ATTR_VALUE)
                     if (*access_time + *age_off_seconds < *current_time) {
-                        *success = is_eligible_for_trim( *comp_resc , *ch.DATA_ID, *ar.DATA_REPL_STATUS );
-                        *success = attempt_trim( *comp_resc , *ch.DATA_ID, *ch.DATA_SIZE, *ch.DATA_PATH,
-                                                 *full_hier_to_cache, *full_hier_to_archive, *errmsg )
-                        if (!*success)  {
-                            writeLine(*stream , *errmsg)
+                        *dataid = *ch.DATA_ID;
+                        *success = "";
+                        if ( is_eligible_for_trim( *comp_resc , *dataid, *ch.DATA_REPL_STATUS, *archive_repl_status.*dataid )) {
+                          attempt_trim( *comp_resc , *ch.DATA_ID, *ch.DATA_SIZE, *ch.DATA_PATH,
+                                        *full_hier_to_cache, *full_hier_to_archive, *errmsg )
                         }
-                        if (0 > test_meta_on_compound_resc(*comp_resc, *kvp, *unique)) { *try_more_trims = false }
+#                       if (*success != )  { writeLine(*stream , *errmsg) }
                     }
+                    if (0 > test_meta_on_compound_resc(*comp_resc, *kvp, *unique)) { *try_more_trims = false }
                 }
             }
         }
@@ -116,12 +114,12 @@ prune_cache_for_compound_resource_LRU ( *comp_resc, *unique, *stream )
 ####################
 ####################
 
-is_eligible_for_trim (*rescName,*dataId,*archStatus) 
+is_eligible_for_trim (*rescName,*dataId,*cache_status,*archive_status) 
 {
-  if (*archStatus == '0') {
-     #msisync....
-  }
-true
+    *success = true
+    if (*archive_status == '0') { 
+    } 
+    else { true }
 }
 
 tag_atime_on_dataobjs_not_yet_tagged ( *cache_hier, *time)
@@ -146,7 +144,7 @@ tag_atime_on_dataobjs_not_yet_tagged ( *cache_hier, *time)
          *logical_path = *all_cache_datobjs.*alld
          if (*logical_path != "") {
              if (*all_cache_datobjs.*alld != "") {
-               *k."irods_cache_mgt::atime::*alld" = *time
+               *k."irods_cache_mgt::atime::*cache_hier" = *time
                msiSetKeyValuePairsToObj( *k, *logical_path, "-d")
              }
          }
@@ -157,19 +155,20 @@ attempt_trim (*compound, *dataid, *datasize, *phys_path,
               *hier_Cache, *hier_Archive, *msgout)
 {
     *msgout = ""
-    *status = true
+    *status = 0
     if (double(*datasize) > threshold_for_delay_trim) {
-        # *** schedule in delay queue ; leave status true for success
+        # *** schedule in delay queue
         *msgout = "delayed"
+        *status = 1
     }
     else {
         *so_far = true
-        # attempt a sync-to-archive operation
+        # sync-to-archive operation , possible chain of >=1 other checks
         #  ... *so_far =  *so_far && (test of operation success)
         # if successful, and archive and cache have good repl's, then attempt trim
-        if ( ! *so_far # failure
+        if ( ! *so_far
         ) {
-            *status = false
+            *status = -1
         }
     }
 *status
@@ -186,9 +185,7 @@ get_cmdline_tokens(*Unique,*Stream) {
 if (*errcode1 != 0) then *errcode1 else *errcode2;
 }
 
-#---vv DWM get rid of
-prune_dummy { writeLine ("serverLog", "dummy_prune_cache_Routine") }
-#---^^
+prune_dummy { writeLine ("serverLog", "dummy_prune_x_cache_Routine") }
 
 prune_rule_ids_as_string(*pad,*lkstring)
 {

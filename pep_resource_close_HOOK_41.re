@@ -9,13 +9,19 @@ pep_resource_close_HOOK ( *DObj, *annotation )
       msiGetIcatTime(*tm, "unix")
       *dataId = ""
       *KVP = $KVPairs
-#     foreach (*k in *KVP) { writeLine("serverLog", *k ++ " => " ++ *KVP.*k) } # DEBUG 
+# -- debug --> # foreach (*k in *KVP) { writeLine("serverLog", *k ++ " => " ++ *KVP.*k) }
       *path = *KVP.logical_path
       *hier = *KVP.resc_hier
       writeLine("serverLog","----+   path = *path ;  hier = *hier")
       if (getDataObjectIDFromPathAndResc(*path, *hier, *dataId))
       {
-          writeLine("serverLog","----+   data id = [*dataId] ; time = [*tm]")
+          *candidate = top_or_next_lowest_in_resc_hier(*hier)
+          *is_comp_resc = is_compound_resource( *candidate )
+          if (*is_comp_resc) {
+                *meta."irods_cache_mgt::atime::*hier" = "*tm"
+                msiSetKeyValuePairsToObj( *meta , *path , "-d" )
+          }
+          writeLine("serverLog","----+   data id = [*dataId] ; time = [*tm] ")
       }
       writeLine("serverLog","<---- pep_resource_close / *annotation " )
 }
