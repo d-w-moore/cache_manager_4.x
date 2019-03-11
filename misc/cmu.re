@@ -1,14 +1,24 @@
-# -- begin configuration
+# +++ begin configuration +++
 
 IRodsVersion { 41 }
 
 cache_task_reserve_key { "irods_cache_mgt::reserve_resc" }
 
-threshold_for_delay_trim { ( 1000.0 ^ 2 ) * 500.0 } # bytes
+threshold_for_delay_sync { ( 1000.0 ^ 2 ) * 500.0 } # bytes
 
-default_trim_age { 86400 }
+default_LRU_trim_age { 86400 }
 
-# -- end configuration
+LRU_trim_age {
+ *age = -1
+ if (0 != errorcode( { *age = int(*test_age) } )) {
+   *age = int(default_LRU_trim_age)
+ }
+ if *age > 15
+ then *age
+ else 15 # -> minimum configurable trim age = 15 secs
+}
+
+# ++++ end configuration ++++
 
 calculate_unique {
    get_cmdline_tokens(*u,*s)
@@ -29,10 +39,8 @@ prune_cache_test(*comp_resc,*unique,*waitsecs)
     *waitSec = (if "*waitsecs" == "" then "0" else "*waitsecs")
     if (set_meta_on_compound_resc (*comp_resc, *kvp, *unique))
     {
-        #msiSleep("*waitSec","0")
         for (*i=0;*i<2;*i=*i+1) {
             msiSleep(str( int(int("*waitSec")/2)) ,"0")
-            #writeLine("*stream","--> [*i] loop")
             if (*i == 0 && 0 > test_meta_on_compound_resc(*comp_resc, *kvp, *unique)) { break }
         }
     }
@@ -46,7 +54,7 @@ prune_cache_for_compound_resource_LRU ( *comp_resc, *unique, *stream )
 #       # 1 ) if able to lock resource :
         msiGetIcatTime(*current_time , "unix")
         *context_list = get_context_string_elements_for_resc (*comp_resc)
-        *age_off_seconds_str = str(default_trim_age)
+        *age_off_seconds_str = str(LRU_trim_age)
         *bytes_usage_threshold  = -1.0;
 #
         foreach ( *element in *context_list ) {
@@ -69,7 +77,7 @@ prune_cache_for_compound_resource_LRU ( *comp_resc, *unique, *stream )
         if (*bytes_usage_threshold  > 0.0 ) {
           foreach (*d in select DATA_ID, DATA_NAME, DATA_SIZE, COLL_NAME, DATA_RESC_HIER, DATA_REPL_STATUS
                    where DATA_RESC_HIER = "*full_hier_to_cache")
-          {  # check DATA_REPL_STATUS for cache copy?
+          {
              *bytes_used = *bytes_used + double( *d.DATA_SIZE )
           }
         }
@@ -79,15 +87,15 @@ prune_cache_for_compound_resource_LRU ( *comp_resc, *unique, *stream )
         {
             msiString2KeyValPair("",*archive_repl_status)
             foreach (*ar in select DATA_ID, DATA_NAME, COLL_NAME, META_DATA_ATTR_NAME, order(META_DATA_ATTR_VALUE),DATA_REPL_STATUS
-                     where DATA_RESC_HIER = "*full_hier_to_archive" and META_DATA_ATTR_NAME like "irods_cache_mgt::atime::*full_hier_to_cache")
+             where DATA_RESC_HIER = "*full_hier_to_archive" and META_DATA_ATTR_NAME like "irods_cache_mgt::atime::*full_hier_to_cache")
             {
                 *dataId = *ar.DATA_ID
                 *archive_repl_status.*dataId = *ar.DATA_REPL_STATUS
             }
             *try_more_trims = true
             foreach (*ch in select DATA_ID, DATA_NAME, COLL_NAME, META_DATA_ATTR_NAME, order(META_DATA_ATTR_VALUE),
-                                  DATA_PATH, DATA_SIZE, DATA_REPL_STATUS
-                     where DATA_RESC_HIER = "*full_hier_to_cache"
+                       DATA_PATH, DATA_SIZE, DATA_REPL_STATUS, DATA_REPL_NUM
+                       where DATA_RESC_HIER = "*full_hier_to_cache"
                        and META_DATA_ATTR_NAME like "irods_cache_mgt::atime::*full_hier_to_cache")
             {
                 if (*try_more_trims) {
@@ -95,11 +103,18 @@ prune_cache_for_compound_resource_LRU ( *comp_resc, *unique, *stream )
                     if (*access_time + *age_off_seconds < *current_time) {
                         *dataid = *ch.DATA_ID;
                         *success = "";
-                        if ( is_eligible_for_trim( *comp_resc , *dataid, *ch.DATA_REPL_STATUS, *archive_repl_status.*dataid )) {
-                          attempt_trim( *comp_resc , *ch.DATA_ID, *ch.DATA_SIZE, *ch.DATA_PATH,
-                                        *full_hier_to_cache, *full_hier_to_archive, *errmsg )
+                        *cchstat =  *ch.DATA_REPL_STATUS
+                        *arcstat =  *archive_repl_status.*dataid
+                        if ( is_eligible_for_trim( *comp_resc , *dataid, *cchstat, *arcstat)) {
+                            *logicalPath = *ch.COLL_NAME ++ "/" ++ *ch.DATA_NAME; 
+                            *status = do_sync( *full_hier_to_cache, *full_hier_to_archive, *ch.DATA_PATH, *logicalPath )
+                            if (do_sync(*full_hier_to_cache,*full_hier_to_archive,
+                                        *ch.DATA_SIZE,*ch.DATA_PATH, *logicalPath, *cchstat, *arcstat))
+                            {
+                                *trimstat = msiDataObjTrim(*logicalPath,'null',*ch.DATA_REPL_NUM,'1','1',*trim_status)
+                            }
                         }
-#                       if (*success != )  { writeLine(*stream , *errmsg) }
+#                       if (*success != "")  { writeLine(*stream , *errmsg) }
                     }
                     if (0 > test_meta_on_compound_resc(*comp_resc, *kvp, *unique)) { *try_more_trims = false }
                 }
@@ -114,12 +129,15 @@ prune_cache_for_compound_resource_LRU ( *comp_resc, *unique, *stream )
 ####################
 ####################
 
-is_eligible_for_trim (*rescName,*dataId,*cache_status,*archive_status) 
+is_eligible_for_trim (*rescName,*dataid,*cache_dobj_var)
 {
-    *success = true
-    if (*archive_status == '0') { 
-    } 
-    else { true }
+# refine according to preference; eg test checksums
+  true
+}
+
+do_sync( *hier_cache, *hier_archive, *dataSize, *physicalPath, *logicalPath,  *ccheStatus, *archStatusLookup )
+{
+  *status = msisync_to_archive ("*hier_cache", *physicalPath, *logicalPath)
 }
 
 tag_atime_on_dataobjs_not_yet_tagged ( *cache_hier, *time)
@@ -151,19 +169,17 @@ tag_atime_on_dataobjs_not_yet_tagged ( *cache_hier, *time)
     }
 }
 
-attempt_trim (*compound, *dataid, *datasize, *phys_path,
+attempt_sync (*compound, *dataid, *datasize, *phys_path,
               *hier_Cache, *hier_Archive, *msgout)
 {
     *msgout = ""
     *status = 0
-    if (double(*datasize) > threshold_for_delay_trim) {
+    if (double(*datasize) > threshold_for_delay_sync) {
         # *** schedule in delay queue
-        *msgout = "delayed"
         *status = 1
     }
     else {
         *so_far = true
-        # sync-to-archive operation , possible chain of >=1 other checks
         #  ... *so_far =  *so_far && (test of operation success)
         # if successful, and archive and cache have good repl's, then attempt trim
         if ( ! *so_far
