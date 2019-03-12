@@ -92,6 +92,8 @@ prune_cache_for_compound_resource_LRU ( *comp_resc, *unique, *stream )
                 *dataId = *ar.DATA_ID
                 *archive_repl_status.*dataId = *ar.DATA_REPL_STATUS
             }
+            *size_found = 0.0;
+            *trims_total_size = 0.0;
             *try_more_trims = true
             foreach (*ch in select DATA_ID, DATA_NAME, COLL_NAME, META_DATA_ATTR_NAME, order(META_DATA_ATTR_VALUE),
                        DATA_PATH, DATA_SIZE, DATA_REPL_STATUS, DATA_REPL_NUM
@@ -104,14 +106,16 @@ prune_cache_for_compound_resource_LRU ( *comp_resc, *unique, *stream )
                         *dataid = *ch.DATA_ID;
                         *success = "";
                         *cchstat =  *ch.DATA_REPL_STATUS
-                        *arcstat =  *archive_repl_status.*dataid
+                        *arcstat = '0'
+                        errorcode( { *arcstat = *archive_repl_status.*dataid } )
+
                         if ( is_eligible_for_trim( *comp_resc , *dataid, *cchstat, *arcstat)) {
+                            *size_found = *size_found + double(*ch.DATA_SIZE)
                             *logicalPath = *ch.COLL_NAME ++ "/" ++ *ch.DATA_NAME; 
-                            *status = do_sync( *full_hier_to_cache, *full_hier_to_archive, *ch.DATA_PATH, *logicalPath )
-                            if (do_sync(*full_hier_to_cache,*full_hier_to_archive,
-                                        *ch.DATA_SIZE,*ch.DATA_PATH, *logicalPath, *cchstat, *arcstat))
+                            if (do_sync(*full_hier_to_cache,*full_hier_to_archive, *dataid,*ch.DATA_PATH, *logicalPath, *cchstat, *arcstat))
                             {
-                                *trimstat = msiDataObjTrim(*logicalPath,'null',*ch.DATA_REPL_NUM,'1','1',*trim_status)
+                                msiDataObjTrim(*logicalPath,'null',*ch.DATA_REPL_NUM,'1','1',*trim_status)
+                                if (int(*trim_status) > 0) { *trims_total_size = *trims_total_size + double(*ch.DATA_SIZE) }
                             }
                         }
 #                       if (*success != "")  { writeLine(*stream , *errmsg) }
@@ -129,16 +133,32 @@ prune_cache_for_compound_resource_LRU ( *comp_resc, *unique, *stream )
 ####################
 ####################
 
-is_eligible_for_trim (*rescName,*dataid,*cache_dobj_var)
+is_eligible_for_trim (*rescName,*dataid, *cache_status, *archive_status)
 {
 # refine according to preference; eg test checksums
-  true
+  *cache_status  == '1'
 }
 
-do_sync( *hier_cache, *hier_archive, *dataSize, *physicalPath, *logicalPath,  *ccheStatus, *archStatusLookup )
+####################
+
+do_sync( *hier_cache, *hier_archive, *dataId, *physicalPath, *logicalPath,
+         *cache_repl_status, *archive_repl_status )
 {
-  *status = msisync_to_archive ("*hier_cache", *physicalPath, *logicalPath)
+    *success = false
+    if ( *cache_repl_status ==  '1') {
+        *status = msisync_to_archive ("*hier_cache", *physicalPath, *logicalPath)
+        *sync_success = (*status == 0)
+        if (*sync_success) {
+            foreach (*ar in select DATA_REPL_STATUS where DATA_RESC_HIER = '*hier_archive' and DATA_ID = '*dataId') {
+                *archive_repl_status = *ar.DATA_REPL_STATUS
+            }
+            if (*archive_repl_status == '1') { *success = true }
+        }
+    }
+*success
 }
+
+####################
 
 tag_atime_on_dataobjs_not_yet_tagged ( *cache_hier, *time)
 {
@@ -169,26 +189,31 @@ tag_atime_on_dataobjs_not_yet_tagged ( *cache_hier, *time)
     }
 }
 
-attempt_sync (*compound, *dataid, *datasize, *phys_path,
-              *hier_Cache, *hier_Archive, *msgout)
-{
-    *msgout = ""
-    *status = 0
-    if (double(*datasize) > threshold_for_delay_sync) {
-        # *** schedule in delay queue
-        *status = 1
-    }
-    else {
-        *so_far = true
-        #  ... *so_far =  *so_far && (test of operation success)
-        # if successful, and archive and cache have good repl's, then attempt trim
-        if ( ! *so_far
-        ) {
-            *status = -1
-        }
-    }
-*status
-}
+########### FOR LATER
+# 
+# attempt_sync (*compound, *dataid, *datasize, *phys_path,
+#               *hier_Cache, *hier_Archive, *msgout)
+# {
+#     *msgout = ""
+#     *status = 0
+#     if (double(*datasize) > threshold_for_delay_sync) {
+#         # *** schedule in delay queue
+#         *status = 1
+#     }
+#     else {
+#         *so_far = true
+#         #  ... *so_far =  *so_far && (test of operation success)
+#         # if successful, and archive and cache have good repl's, then attempt trim
+#         if ( ! *so_far
+#         ) {
+#             *status = -1
+#         }
+#     }
+# *status
+# }
+
+####################
+####################
 
 get_cmdline_tokens(*Unique,*Stream) {
     *Stream = ""
