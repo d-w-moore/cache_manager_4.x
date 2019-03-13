@@ -1,8 +1,25 @@
 #!/bin/bash
 
-ROUTINE=prune_cache_test
+ROUTINE="prune_cache_for_compound_resource_LRU"
+PARAM3="serverLog"
+case "$1" in
+  -s | --std*) PARAM3="stdout" ; shift ;;
+  -t | --t*)
+    ROUTINE="prune_cache_test"
+    PARAM3="15"
+    shift
+    ;;
+  -*) echo >&2 "bad option '$1'" ; exit 1 ;;
+  *) true ;;
+esac
+
 [ $# -ge 1 ] && Resc_List="$1"
 : ${Resc_List:=""}
+
+{ echo "params -- ROUTINE='$ROUTINE' PARAM3='$PARAM3' -- args -- $*"
+  echo "Resc_List => $Resc_List"
+  echo
+} >&2
 
 resc_meta_key=$(irule 'writeLine("stdout",cache_task_reserve_key)' null ruleExecOut)
 
