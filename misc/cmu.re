@@ -144,11 +144,11 @@ do_sync( *hier_cache, *hier_archive, *dataId, *dataSize, *physicalPath, *logical
          *cache_repl_status, *archive_repl_status, *allow_delay )
 {
     *success = false
-    *sync_success = true
     if ( *cache_repl_status ==  '1' && *archive_repl_status == '0') {
+        *sync_success = false
 #       if (double(*dataSize) > threshold_for_delay_sync && *allow_delay) {
 #         delay("<PLUSET>1s</PLUSET>") { msisync_to_archive (...) }
-#         *success = false
+#         *sync_success = false
 #       } else {
         *status = msisync_to_archive ("*hier_cache", *physicalPath, *logicalPath)
         *sync_success = (*status == 0)
