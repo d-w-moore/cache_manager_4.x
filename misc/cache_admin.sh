@@ -13,7 +13,7 @@ case "$1" in
   *) true ;;
 esac
 
-[ $# -ge 1 ] && Resc_List="$1"
+[ $# -ge 1 ] && Resc_List="$*"
 : ${Resc_List:=""}
 
 { echo "params -- ROUTINE='$ROUTINE' PARAM3='$PARAM3' -- args -- $*"
@@ -39,9 +39,7 @@ list_rules_from_pattern() {
   irule "*x=prune_rule_ids_as_string(true,'$ptn') ; writeLine('stdout','*x')" null ruleExecOut  | ${fmt}_format
 }
 
-rule_pattern="%prune_cache%(\"$rescName\"%"
-
-
+# ----------------------------  MAIN MENU ---------------------------- 
 select name in quit list-compound-{short,long} chg-rescs run-schedule run-now \
                del-rules del-meta list-rules interrupt
 do
@@ -72,7 +70,7 @@ do
         STREAM=serverLog
         UNIQ=$(irule "writeLine('stdout',calculate_unique())"  "*stream=$STREAM%*uniq=0" ruleExecOut)
         echo >&2 "unique tag = $UNIQ"
-        irule 'delay("<PLUSET>30s</PLUSET><EF>30</EF>") {'$ROUTINE'("'$Resc'","'$UNIQ'","15")}' null null 
+        irule 'delay("<PLUSET>30s</PLUSET><EF>30</EF>") {'$ROUTINE'("'$Resc'","'$UNIQ'","'$PARAM3'")}' null null 
       done
       ;;
     run-now)
@@ -82,7 +80,7 @@ do
         STREAM=stdout
         UNIQ=$(irule "writeLine('stdout',calculate_unique())"  "*stream=$STREAM%*uniq=$MetaId" ruleExecOut)
         echo >&2 "unique tag = $UNIQ"
-        irule $ROUTINE'("'$Resc'","'$UNIQ'","15")' null ruleExecOut
+        irule $ROUTINE'("'$Resc'","'$UNIQ'","'$PARAM3'")' null ruleExecOut
       done;;
     interrupt)
       exec 9</dev/tty
