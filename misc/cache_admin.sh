@@ -75,7 +75,7 @@ do
       ;;
     run-now)
       MetaId=$(((RANDOM<<16)^$$))
-      echo >&2 "Sleeping to ensure unique timepoint for metadata tags ... " ; sleep 3; echo "done"
+#     echo >&2 "Sleeping to ensure unique timepoint for metadata tags ... " ; sleep 3; echo "done"
       for Resc in $Resc_List; do
         STREAM=stdout
         UNIQ=$(irule "writeLine('stdout',calculate_unique())"  "*stream=$STREAM%*uniq=$MetaId" ruleExecOut)

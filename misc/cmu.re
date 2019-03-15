@@ -113,18 +113,20 @@ writeLine(*stream,"--> got to try trims checkpt ================== cache = [*ful
                         *cchstat =  *ch.DATA_REPL_STATUS
                         *arcstat = '0'
                         errorcode( { *arcstat = *archive_repl_status.*dataid } )
-                        ## writeLine(*stream,"--> got to do_sync for [*logicalPath]") #### DEBUG
-                        *synced = do_sync(*full_hier_to_cache, *full_hier_to_archive, *dataid, *ch.DATA_SIZE, *ch.DATA_PATH, *logicalPath, *cchstat, *arcstat, false)
+                        *synched = do_sync(*full_hier_to_cache, *full_hier_to_archive, *dataid, *ch.DATA_SIZE, *ch.DATA_PATH, *logicalPath, *cchstat, *arcstat, false)
                         if ( is_eligible_for_trim( *comp_resc , *roles.cache, *roles.archive, *dataid, *cchstat, *arcstat)) {
-                        ## writeLine(*stream,"--> past  do_sync for [*logicalPath]") #### DEBUG
                             *size_found = *size_found + double(*ch.DATA_SIZE)
-                            if (do_sync(*full_hier_to_cache,*full_hier_to_archive, *dataid, ch.DATA_SIZE, *ch.DATA_PATH, *logicalPath, *cchstat, *arcstat, true))
-                            {
-#                               msiDataObjTrim(*logicalPath,'null',*ch.DATA_REPL_NUM,'1','1',*trim_status)
-#                               if (int(*trim_status) > 0) { *trims_total_size = *trims_total_size + double(*ch.DATA_SIZE) }
+                            writeLine(*stream,"--> synched [*synched] try TRIM? [*logicalPath]")  ## DEBUG
+                            if (!*synched) {
+                                *synched = do_sync(*full_hier_to_cache,*full_hier_to_archive, *dataid, *ch.DATA_SIZE, *ch.DATA_PATH, 
+                                                   *logicalPath, *cchstat, *arcstat, true)
+                            }
+                            writeLine(*stream,"--> synched [*synched] arcstat *arcstat ;  before trim [*logicalPath]")  ## DEBUG
+                            if (*synched) {
+                                msiDataObjTrim(*logicalPath,'null',*ch.DATA_REPL_NUM,'1','1',*trim_status)
+                                if (int(*trim_status) > 0) { *trims_total_size = *trims_total_size + double(*ch.DATA_SIZE) }
                             }
                         }
-#                       if (*success != "")  { writeLine(*stream , *errmsg) }
                     }
                     if (0 > test_meta_on_compound_resc(*comp_resc, *kvp, *unique)) { *try_more_trims = false }
                 }
