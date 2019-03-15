@@ -75,10 +75,12 @@ prune_cache_for_compound_resource_LRU ( *comp_resc, *unique, *stream )
         writeLine(*stream, "full hier : *full_hier_to_cache , *full_hier_to_archive")
 
         if (*bytes_usage_threshold >= 0.0 ) {
-            foreach (*d in select DATA_ID, DATA_NAME, DATA_SIZE, COLL_NAME, DATA_RESC_HIER, DATA_REPL_STATUS
-                     where DATA_RESC_HIER = "*full_hier_to_cache")
+#           #foreach (*d in select DATA_ID, DATA_NAME, DATA_SIZE, COLL_NAME, DATA_RESC_HIER, DATA_REPL_STATUS 
+#           #foreach (*d in select DATA_SIZE where DATA_RESC_HIER = "*full_hier_to_cache")
+            foreach (*d in select sum(DATA_SIZE) where DATA_RESC_HIER = "*full_hier_to_cache")
             {
-                *bytes_used = *bytes_used + double( *d.DATA_SIZE )
+#               # *bytes_used = *bytes_used + double( *d.DATA_SIZE )
+                *bytes_used = double(*d.DATA_SIZE)
             }
         }
 
@@ -87,7 +89,7 @@ prune_cache_for_compound_resource_LRU ( *comp_resc, *unique, *stream )
         if (*bytes_used > *bytes_usage_threshold )
         {
             msiString2KeyValPair("",*archive_repl_status)
-            foreach (*ar in select DATA_ID, DATA_NAME, COLL_NAME, META_DATA_ATTR_NAME, order(META_DATA_ATTR_VALUE),DATA_REPL_STATUS
+            foreach (*ar in select DATA_ID, order(META_DATA_ATTR_VALUE),DATA_REPL_STATUS
              where DATA_RESC_HIER = "*full_hier_to_archive" and META_DATA_ATTR_NAME like "irods_cache_mgt::atime::*full_hier_to_cache")
             {
                 *dataId = *ar.DATA_ID
@@ -97,24 +99,26 @@ prune_cache_for_compound_resource_LRU ( *comp_resc, *unique, *stream )
             *trims_total_size = 0.0;
             *try_more_trims = true
 writeLine(*stream,"--> got to try trims checkpt ================== cache = [*full_hier_to_cache]")
-            foreach (*ch in select DATA_ID, DATA_NAME, COLL_NAME, META_DATA_ATTR_NAME, order(META_DATA_ATTR_VALUE),
+            foreach (*ch in select DATA_ID, DATA_NAME, COLL_NAME, META_DATA_ATTR_NAME, order_asc(META_DATA_ATTR_VALUE),
                        DATA_PATH, DATA_SIZE, DATA_REPL_STATUS, DATA_REPL_NUM
                        where DATA_RESC_HIER = "*full_hier_to_cache"
                        and META_DATA_ATTR_NAME like "irods_cache_mgt::atime::*full_hier_to_cache"
                        )
             {
                 if (*try_more_trims) {
-                    *logicalPath = *ch.COLL_NAME ++ "/" ++ *ch.DATA_NAME;
+                    *logicalPath = *ch.COLL_NAME ++ "/" ++ *ch.DATA_NAME
                     *access_time = double(*ch.META_DATA_ATTR_VALUE)
                     ## writeLine(*stream,"--> got to atime check for [*logicalPath]")  ## DEBUG
                     if (*access_time + *age_off_seconds < *current_time) {
                         *dataid = *ch.DATA_ID
-                        *success = "";
+                        *success = ""
                         *cchstat =  *ch.DATA_REPL_STATUS
                         *arcstat = '0'
                         errorcode( { *arcstat = *archive_repl_status.*dataid } )
+                        # possibly "is eligible for synch" - to separate concerns
                         *synched = do_sync(*full_hier_to_cache, *full_hier_to_archive, *dataid, *ch.DATA_SIZE, *ch.DATA_PATH, *logicalPath, *cchstat, *arcstat, false)
                         if ( is_eligible_for_trim( *comp_resc , *roles.cache, *roles.archive, *dataid, *cchstat, *arcstat)) {
+                            # *synched && is_eligible_for_trim ... (if not synched, don't check eligible for trim)
                             *size_found = *size_found + double(*ch.DATA_SIZE)
                             writeLine(*stream,"--> synched [*synched] try TRIM? [*logicalPath]")  ## DEBUG
                             if (!*synched) {
@@ -127,7 +131,7 @@ writeLine(*stream,"--> got to try trims checkpt ================== cache = [*ful
                                 if (int(*trim_status) > 0) { *trims_total_size = *trims_total_size + double(*ch.DATA_SIZE) }
                             }
                         }
-                    }
+                    }  # vvv--- better name please ---vvv if interrupt requested
                     if (0 > test_meta_on_compound_resc(*comp_resc, *kvp, *unique)) { *try_more_trims = false }
                 }
             }
@@ -233,6 +237,8 @@ prune_rule_ids_as_list(*padElements,*likePattern)
 *delaylist;
 }
         #---#
+
+# get_partial_hierarchy_of_resource is a better name
 
 trace_hierarchy (*cname,*map,*hier)
 {
@@ -371,6 +377,8 @@ get_meta_on_compresc ( *resc_name  )
   if(*match == 1) then *val else ""
 }
 
+## -- rename -- is_interrupt_requested
+
 test_meta_on_compound_resc ( *resc_name, *kvp, *test_value )
 {
   *match = 0
@@ -470,15 +478,16 @@ trim_leading_whitespace (*strg)
 # =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
 trim_surrounding_whitespace (*strg) {
-  trim_leading_whitespace( trim_trailing_whitespace( *strg ))
+  trim_leading_whitespace(trim_trailing_whitespace( *strg ))
 }
 
+# check out
 # =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
 get_context_string_elements_for_resc (*rescN)
 {
   *l = list()
-  foreach (*r in select RESC_NAME , RESC_CONTEXT where RESC_NAME = '*rescN')
+  foreach (*r in select RESC_CONTEXT where RESC_NAME = '*rescN')
   {
     foreach (*expr in split(*r.RESC_CONTEXT , ";"))
     {
@@ -526,7 +535,7 @@ find_compound_parent_and_leaf_roles(*inpName, *isLeaf, *leaf_lookup)
 
 find_compound_parent_and_leaf_roles_42(*inpName, *isLeaf, *leaf_lookup)
 {
-println("\*42")
+## println("\*42")
     msiString2KeyValPair("",*idmap)
 
     foreach (*r in select RESC_ID,RESC_NAME where RESC_TYPE_NAME = 'compound') {

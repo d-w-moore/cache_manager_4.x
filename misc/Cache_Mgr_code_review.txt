@@ -1,0 +1,6 @@
+replicating resc
+
+in cache_admin add current list of Compound rescs to prompt
+
+other changes in comments
+
