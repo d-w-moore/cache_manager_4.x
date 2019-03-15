@@ -118,7 +118,7 @@ writeLine(*stream,"--> got to try trims checkpt ================== cache = [*ful
                             *size_found = *size_found + double(*ch.DATA_SIZE)
                             writeLine(*stream,"--> synched [*synched] try TRIM? [*logicalPath]")  ## DEBUG
                             if (!*synched) {
-                                *synched = do_sync(*full_hier_to_cache,*full_hier_to_archive, *dataid, *ch.DATA_SIZE, *ch.DATA_PATH, 
+                                *synched = do_sync(*full_hier_to_cache,*full_hier_to_archive, *dataid, *ch.DATA_SIZE, *ch.DATA_PATH,
                                                    *logicalPath, *cchstat, *arcstat, true)
                             }
                             writeLine(*stream,"--> synched [*synched] arcstat *arcstat ;  before trim [*logicalPath]")  ## DEBUG
@@ -152,9 +152,9 @@ is_eligible_for_trim (*compound_name, *cache_name, *archive_name, *data_id, *cac
 do_sync( *hier_cache, *hier_archive, *dataId, *dataSize, *physicalPath, *logicalPath,
          *cache_repl_status, *archive_repl_status, *allow_delay )
 {
-    *success = false
+    *success = true
     if ( *cache_repl_status ==  '1' && *archive_repl_status == '0') {
-        *sync_success = false
+        *success = false
 #       if (double(*dataSize) > threshold_for_delay_sync && *allow_delay) {
 #         delay("<PLUSET>1s</PLUSET>") { msisync_to_archive (...) }
 #         *sync_success = false
