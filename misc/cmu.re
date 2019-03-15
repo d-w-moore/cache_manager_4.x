@@ -96,30 +96,33 @@ prune_cache_for_compound_resource_LRU ( *comp_resc, *unique, *stream )
             *size_found = 0.0;
             *trims_total_size = 0.0;
             *try_more_trims = true
+writeLine(*stream,"--> got to try trims checkpt ================== cache = [*full_hier_to_cache]")
             foreach (*ch in select DATA_ID, DATA_NAME, COLL_NAME, META_DATA_ATTR_NAME, order(META_DATA_ATTR_VALUE),
                        DATA_PATH, DATA_SIZE, DATA_REPL_STATUS, DATA_REPL_NUM
                        where DATA_RESC_HIER = "*full_hier_to_cache"
-                       and META_DATA_ATTR_NAME like "irods_cache_mgt::atime::*full_hier_to_cache")
+                       and META_DATA_ATTR_NAME like "irods_cache_mgt::atime::*full_hier_to_cache"
+                       )
             {
                 if (*try_more_trims) {
+                    *logicalPath = *ch.COLL_NAME ++ "/" ++ *ch.DATA_NAME;
                     *access_time = double(*ch.META_DATA_ATTR_VALUE)
+                    ## writeLine(*stream,"--> got to atime check for [*logicalPath]")  ## DEBUG
                     if (*access_time + *age_off_seconds < *current_time) {
                         *dataid = *ch.DATA_ID
                         *success = "";
                         *cchstat =  *ch.DATA_REPL_STATUS
                         *arcstat = '0'
                         errorcode( { *arcstat = *archive_repl_status.*dataid } )
-                        *logicalPath = *ch.COLL_NAME ++ "/" ++ *ch.DATA_NAME;
-writeLine(*stream,"--> got to first do_sync")
+                        ## writeLine(*stream,"--> got to do_sync for [*logicalPath]") #### DEBUG
                         *synced = do_sync(*full_hier_to_cache, *full_hier_to_archive, *dataid, *ch.DATA_SIZE, *ch.DATA_PATH, *logicalPath, *cchstat, *arcstat, false)
                         if ( is_eligible_for_trim( *comp_resc , *roles.cache, *roles.archive, *dataid, *cchstat, *arcstat)) {
-writeLine(*stream,"--> passed first do_sync")
-#                           *size_found = *size_found + double(*ch.DATA_SIZE)
-#                           if (do_sync(*full_hier_to_cache,*full_hier_to_archive, *dataid, ch.DATA_SIZE, *ch.DATA_PATH, *logicalPath, *cchstat, *arcstat, true))
-#                           {
+                        ## writeLine(*stream,"--> past  do_sync for [*logicalPath]") #### DEBUG
+                            *size_found = *size_found + double(*ch.DATA_SIZE)
+                            if (do_sync(*full_hier_to_cache,*full_hier_to_archive, *dataid, ch.DATA_SIZE, *ch.DATA_PATH, *logicalPath, *cchstat, *arcstat, true))
+                            {
 #                               msiDataObjTrim(*logicalPath,'null',*ch.DATA_REPL_NUM,'1','1',*trim_status)
 #                               if (int(*trim_status) > 0) { *trims_total_size = *trims_total_size + double(*ch.DATA_SIZE) }
-#                           }
+                            }
                         }
 #                       if (*success != "")  { writeLine(*stream , *errmsg) }
                     }
@@ -128,8 +131,7 @@ writeLine(*stream,"--> passed first do_sync")
             }
         }
         msiGetIcatTime(*current_icat_time, "unix")
- writeLine("stdout", "strm *stream ; cmpresc *comp_resc time  *current_icat_time")
-#       tag_atime_on_dataobjs_not_yet_tagged (*full_hier_to_cache, *current_icat_time)
+        tag_atime_on_dataobjs_not_yet_tagged (*full_hier_to_cache, *current_icat_time)
     }
     unset_meta_on_compound_resc (*comp_resc, *kvp)
 }
@@ -170,32 +172,30 @@ do_sync( *hier_cache, *hier_archive, *dataId, *dataSize, *physicalPath, *logical
 
 ####################
 
-tag_atime_on_dataobjs_not_yet_tagged ( *cache_hier, *time)
+tag_atime_on_dataobjs_not_yet_tagged ( *cache_hier, *time )
 {
-   msiString2KeyValPairs("",*all_cache_dataobjs)
-   foreach (*d in select DATA_ID, DATA_NAME, COLL_NAME, META_DATA_ATTR_NAME
+   msiString2KeyValPair ("",*all_cache_data_objs)
+   foreach (*d in select DATA_ID, DATA_NAME, COLL_NAME
             where DATA_RESC_HIER = "*cache_hier"
             ) {
         *dataId = *d.DATA_ID
         *dataName = *d.DATA_NAME
         *collName = *d.COLL_NAME
-        *all_cache_datobjs.*dataId = "*collName/*dataName"
+        *all_cache_data_objs.*dataId = "*collName/*dataName"
     }
     foreach (*d in select DATA_ID
-             where DATA_RESC_HIER = "*cache_hier" and META_DATA_ATTR_NAME like "irods_cache_mgt::atime::%")
+             where DATA_RESC_HIER = "*cache_hier" and META_DATA_ATTR_NAME = "irods_cache_mgt::atime::*cache_hier")
     {
         *dataId = *d.DATA_ID
-        *all_cache_datobjs.*dataId = ""
+        *all_cache_data_objs.*dataId = ""
     }
-    foreach (*alld in *all_cache_datobjs)
+    foreach (*alld in *all_cache_data_objs)
     {
-         *logical_path = *all_cache_datobjs.*alld
-         if (*logical_path != "") {
-             if (*all_cache_datobjs.*alld != "") {
-               *k."irods_cache_mgt::atime::*cache_hier" = *time
-               msiSetKeyValuePairsToObj( *k, *logical_path, "-d")
-             }
-         }
+        *logical_path = *all_cache_data_objs.*alld
+        if (*logical_path != "") {
+            *k."irods_cache_mgt::atime::*cache_hier" = *time
+            msiSetKeyValuePairsToObj( *k, *logical_path, "-d")
+        }
     }
 }
 
