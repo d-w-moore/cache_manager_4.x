@@ -43,6 +43,8 @@ prune_cache_for_compound_resource_LRU ( *comp_resc, *unique, *stream )
 
     if (set_meta_on_compound_resc (*comp_resc, *kvp, *unique)) {
 
+#  vvvvvvvvvv------- collapse this stuff for readability _( eg single call for context strings )
+
         msiGetIcatTime(*current_time , "unix")
         *context_list = get_context_string_elements_for_resc (*comp_resc)
         *age_off_seconds = default_LRU_trim_age
