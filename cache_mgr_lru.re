@@ -50,6 +50,7 @@ get_values_for_context_keys(*resc, *ctx_keys)
 
 prune_cache_for_compound_resource_LRU ( *comp_resc, *unique, *stream )
 {
+    # (1) attempt to reserve the resource with a metadata "lock"
     if (lock_compound_resc (*comp_resc, *kvp, *unique)) {
 
         msiGetIcatTime(*current_time , "unix")
@@ -60,11 +61,11 @@ prune_cache_for_compound_resource_LRU ( *comp_resc, *unique, *stream )
 
         *bytes_usage_threshold = abs(double(*ctx."irods_cache_mgt::trim_threshold_usage"))
 
-        *age_off_seconds =       int(abs(int(*age_off_seconds_str)))
+        *age_off_seconds =       int(abs(int(*ctx."irods_cache_mgt::trim_minimum_age")))
         if (*age_off_seconds < 15) { *age_off_seconds = 15 }
 
-        writeLine( *stream, "lock on resc "++ *comp_resc ++ " ["++ compound_resc_lock_value ( *comp_resc  )++"]")                                         #
-        writeLine( *stream, "age_off_seconds =       *age_off_seconds " ++ type( *age_off_seconds ))                #
+        #writeLine( *stream, "lock on resc "++ *comp_resc ++ " ["++ compound_resc_lock_value ( *comp_resc  )++"]")                                         #
+        #writeLine( *stream, "age_off_seconds =       *age_off_seconds " ++ type( *age_off_seconds ))                #
 
         # 2 ) get hierarchy info , data usage in cache, and a list of all data objects stamped with an access time
         #     ... and attempt to trim as much as possible from cache ; *try_more_trims is flag for loop "interrupt"
