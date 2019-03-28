@@ -23,70 +23,67 @@ unique_number(*rand_32_bit_int)
 str(double("*rand_32_bit_int")*(*bignum) + *uniq);
 }
 
-prune_cache_test(*comp_resc,*unique,*waitsecs)
+prune_cache_test(*comp_resc,*unique,*half_interval_in_secs)
 {
-    *waitSec = (if "*waitsecs" == "" then "0" else "*waitsecs")
-    if (set_meta_on_compound_resc (*comp_resc, *kvp, *unique))
+    *wait_time = (if "*wait_seconds" == "" then "0" else "*wait_seconds")
+
+    if (lock_compound_resc (*comp_resc, *kvp, *unique))
     {
         for (*i=0;*i<2;*i=*i+1) {
-            msiSleep(str( int(int("*waitSec")/2)) ,"0")
-            if (*i == 0 && 0 > test_meta_on_compound_resc(*comp_resc, *kvp, *unique)) { break }
+            msiSleep(str( int(int("*wait_time")/2)) ,"0")
+            if (*i == 0 && 0 > test_for_interrupt_request(*comp_resc, *kvp, *unique)) { break }
         }
     }
-    unset_meta_on_compound_resc (*comp_resc, *kvp)
+    unlock_compound_resc (*comp_resc, *kvp)
+}
+
+get_values_for_context_keys(*resc, *ctx_keys)
+{
+    *context_list = get_context_string_elements_for_resc (*resc)
+    foreach(*element in *context_list) {
+        foreach (*k in *ctx_keys) {
+            *v = ""
+            if (get_context_value(*element,*k,*v)) { *ctx_keys.*k = *v }
+        }
+    }
 }
 
 prune_cache_for_compound_resource_LRU ( *comp_resc, *unique, *stream )
 {
-
-#   # 1 ) lock resource (via setting/testing metadata)
-
-    if (set_meta_on_compound_resc (*comp_resc, *kvp, *unique)) {
-
-#  vvvvvvvvvv------- collapse this stuff for readability _( eg single call for context strings )
+    if (lock_compound_resc (*comp_resc, *kvp, *unique)) {
 
         msiGetIcatTime(*current_time , "unix")
-        *context_list = get_context_string_elements_for_resc (*comp_resc)
-        *age_off_seconds = default_LRU_trim_age
-        *bytes_usage_threshold  = -1.0;
-        foreach ( *element in *context_list ) {
-            *age_off_seconds_str = ""
-            if (get_context_value (*element, "irods_cache_mgt::trim_minimum_age",*age_off_seconds_str)) {
-                *age_off_seconds = int(abs(int(*age_off_seconds_str)))
-            }
-            *bytes_usage_str = ""
-            if (get_context_value (*element, "irods_cache_mgt::trim_threshold_usage",*bytes_usage_str)) {
-                *bytes_usage_threshold = abs(double(*bytes_usage_str))
-            }
-        }
+        *ctx."irods_cache_mgt::trim_minimum_age" =  str(default_LRU_trim_age)
+        *ctx."irods_cache_mgt::trim_threshold_usage" =  "-1.0"
 
+        get_context_values_by_keys(*comp_resc, *ctx)
+
+        *bytes_usage_threshold = abs(double(*ctx."irods_cache_mgt::trim_threshold_usage"))
+
+        *age_off_seconds =       int(abs(int(*age_off_seconds_str)))
         if (*age_off_seconds < 15) { *age_off_seconds = 15 }
 
-        writeLine( *stream, "["++get_meta_on_compresc ( *comp_resc  )++"]")                                         #
+        writeLine( *stream, "lock on resc "++ *comp_resc ++ " ["++ compound_resc_lock_value ( *comp_resc  )++"]")                                         #
         writeLine( *stream, "age_off_seconds =       *age_off_seconds " ++ type( *age_off_seconds ))                #
 
         # 2 ) get hierarchy info , data usage in cache, and a list of all data objects stamped with an access time
         #     ... and attempt to trim as much as possible from cache ; *try_more_trims is flag for loop "interrupt"
 
-        trace_hierarchy( *comp_resc, *map, *hier_string)
+        get_partial_hierarchy_string( *comp_resc, *hier_string)
+
         find_compound_parent_and_leaf_roles( *comp_resc , false , *roles )
+
         *full_hier_to_cache =  *hier_string ++ ";" ++ *roles.cache
         *full_hier_to_archive =  *hier_string ++ ";" ++ *roles.archive
+
         *bytes_used = 0.0
 
-        writeLine(*stream, "full hier : *full_hier_to_cache , *full_hier_to_archive")
-
         if (*bytes_usage_threshold >= 0.0 ) {
-#           #foreach (*d in select DATA_ID, DATA_NAME, DATA_SIZE, COLL_NAME, DATA_RESC_HIER, DATA_REPL_STATUS 
-#           #foreach (*d in select DATA_SIZE where DATA_RESC_HIER = "*full_hier_to_cache")
             foreach (*d in select sum(DATA_SIZE) where DATA_RESC_HIER = "*full_hier_to_cache")
             {
-#               # *bytes_used = *bytes_used + double( *d.DATA_SIZE )
                 *bytes_used = double(*d.DATA_SIZE)
             }
         }
-
-        writeLine(*stream, "bytes_used: *bytes_used  //  usage threshold : *bytes_usage_threshold")
 
         if (*bytes_used > *bytes_usage_threshold )
         {
@@ -100,7 +97,6 @@ prune_cache_for_compound_resource_LRU ( *comp_resc, *unique, *stream )
             *size_found = 0.0;
             *trims_total_size = 0.0;
             *try_more_trims = true
-writeLine(*stream,"--> got to try trims checkpt ================== cache = [*full_hier_to_cache]")
             foreach (*ch in select DATA_ID, DATA_NAME, COLL_NAME, META_DATA_ATTR_NAME, order_asc(META_DATA_ATTR_VALUE),
                        DATA_PATH, DATA_SIZE, DATA_REPL_STATUS, DATA_REPL_NUM
                        where DATA_RESC_HIER = "*full_hier_to_cache"
@@ -110,7 +106,6 @@ writeLine(*stream,"--> got to try trims checkpt ================== cache = [*ful
                 if (*try_more_trims) {
                     *logicalPath = *ch.COLL_NAME ++ "/" ++ *ch.DATA_NAME
                     *access_time = double(*ch.META_DATA_ATTR_VALUE)
-                    ## writeLine(*stream,"--> got to atime check for [*logicalPath]")  ## DEBUG
                     if (*access_time + *age_off_seconds < *current_time) {
                         *dataid = *ch.DATA_ID
                         *success = ""
@@ -122,26 +117,24 @@ writeLine(*stream,"--> got to try trims checkpt ================== cache = [*ful
                         if ( is_eligible_for_trim( *comp_resc , *roles.cache, *roles.archive, *dataid, *cchstat, *arcstat)) {
                             # *synched && is_eligible_for_trim ... (if not synched, don't check eligible for trim)
                             *size_found = *size_found + double(*ch.DATA_SIZE)
-                            writeLine(*stream,"--> synched [*synched] try TRIM? [*logicalPath]")  ## DEBUG
                             if (!*synched) {
                                 *synched = do_sync(*full_hier_to_cache,*full_hier_to_archive, *dataid, *ch.DATA_SIZE, *ch.DATA_PATH,
                                                    *logicalPath, *cchstat, *arcstat, true)
                             }
-                            writeLine(*stream,"--> synched [*synched] arcstat *arcstat ;  before trim [*logicalPath]")  ## DEBUG
                             if (*synched) {
                                 msiDataObjTrim(*logicalPath,'null',*ch.DATA_REPL_NUM,'1','1',*trim_status)
                                 if (int(*trim_status) > 0) { *trims_total_size = *trims_total_size + double(*ch.DATA_SIZE) }
                             }
                         }
-                    }  # vvv--- better name please ---vvv if interrupt requested
-                    if (0 > test_meta_on_compound_resc(*comp_resc, *kvp, *unique)) { *try_more_trims = false }
+                    }
+                    if (0 > test_for_interrupt_request(*comp_resc, *kvp, *unique)) { *try_more_trims = false }
                 }
             }
         }
         msiGetIcatTime(*current_icat_time, "unix")
         tag_atime_on_dataobjs_not_yet_tagged (*full_hier_to_cache, *current_icat_time)
     }
-    unset_meta_on_compound_resc (*comp_resc, *kvp)
+    unlock_compound_resc (*comp_resc, *kvp)
 }
 
 ####################
@@ -242,7 +235,7 @@ prune_rule_ids_as_list(*padElements,*likePattern)
 
 # get_partial_hierarchy_of_resource is a better name
 
-trace_hierarchy (*cname,*map,*hier)
+get_partial_hierarchy_string (*cname,*hier)
 {
   msiString2KeyValPair( "", *parent)
   msiString2KeyValPair( "", *id2n )
@@ -360,13 +353,13 @@ reverse_list (*L)
 }
         #---#
 
-unset_meta_on_compound_resc( *resc_name, *kvp )
+unlock_compound_resc( *resc_name, *kvp )
 {
     *x = errorcode(msiRemoveKeyValuePairsFromObj( *kvp, *resc_name, "-R"))
     if (*x == 0) { msiString2KeyValPair("",*kvp) }
 }
 
-get_meta_on_compresc ( *resc_name  )
+compound_resc_lock_value ( *resc_name  )
 {
   *match = 0
   *Key = cache_task_reserve_key
@@ -381,7 +374,7 @@ get_meta_on_compresc ( *resc_name  )
 
 ## -- rename -- is_interrupt_requested
 
-test_meta_on_compound_resc ( *resc_name, *kvp, *test_value )
+test_for_interrupt_request ( *resc_name, *kvp, *test_value )
 {
   *match = 0
   *Key = cache_task_reserve_key
@@ -405,11 +398,11 @@ test_meta_on_compound_resc ( *resc_name, *kvp, *test_value )
   else {
     *metaToDelete="*Key=*test_value"
   }
-  msiString2KeyValPair("*metaToDelete",*kvp) # will be used in unset_meta...()
+  msiString2KeyValPair("*metaToDelete",*kvp)
 *match
 }
 
-set_meta_on_compound_resc ( *resc_name, *kvp, *set_value )
+lock_compound_resc ( *resc_name, *kvp, *set_value )
 {
    *match = false
    *Key = cache_task_reserve_key
@@ -445,7 +438,7 @@ set_meta_on_compound_resc ( *resc_name, *kvp, *set_value )
 
 #=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-trim_trailing_whitespace (*strg)
+strip_all_trailing_whitespace (*strg)
 {
     msiStrlen(*strg,*ln)
     *ln = int(*ln)
@@ -461,7 +454,7 @@ trim_trailing_whitespace (*strg)
 *strg
 }
 
-trim_leading_whitespace (*strg)
+strip_all_leading_whitespace (*strg)
 {
     msiStrlen(*strg,*ln)
     *ln = int(*ln)
@@ -479,8 +472,12 @@ trim_leading_whitespace (*strg)
 
 # =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-trim_surrounding_whitespace (*strg) {
-  trim_leading_whitespace(trim_trailing_whitespace( *strg ))
+strip_all_surrounding_whitespace (*strg) {
+    strip_all_leading_whitespace(
+        strip_all_trailing_whitespace(
+            *strg
+        )
+    )
 }
 
 # check out
@@ -505,14 +502,14 @@ get_context_string_elements_for_resc (*rescN)
 get_context_value (*stringElement , *tag , *val )
 {
     *success = false
-    *keqv = trim_leading_whitespace (*stringElement)
+    *keqv = strip_all_leading_whitespace (*stringElement)
     msiStrlen( *keqv, *keqvlen )
     msiStrlen( *tag, *taglen )
     *eq_rhs = triml (*keqv, *tag)
     msiStrlen( *eq_rhs, *eq_rhs_len )
     if (int(*eq_rhs_len) + int(*taglen) == int(*keqvlen))
     {
-        *eqtrim = trim_leading_whitespace(*eq_rhs)
+        *eqtrim = strip_all_leading_whitespace(*eq_rhs)
         msiStrlen(*eqtrim,*eqtrimLen)
         *rhs = triml(*eqtrim,"=")
         msiStrlen(*rhs,*rhsLen)
