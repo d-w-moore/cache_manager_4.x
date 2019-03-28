@@ -56,16 +56,13 @@ prune_cache_for_compound_resource_LRU ( *comp_resc, *unique, *stream )
         msiGetIcatTime(*current_time , "unix")
         *ctx."irods_cache_mgt::trim_minimum_age" =  str(default_LRU_trim_age)
         *ctx."irods_cache_mgt::trim_threshold_usage" =  "-1.0"
-
         get_context_values_by_keys(*comp_resc, *ctx)
-
         *bytes_usage_threshold = abs(double(*ctx."irods_cache_mgt::trim_threshold_usage"))
-
         *age_off_seconds =       int(abs(int(*ctx."irods_cache_mgt::trim_minimum_age")))
         if (*age_off_seconds < 15) { *age_off_seconds = 15 }
 
-        #writeLine( *stream, "lock on resc "++ *comp_resc ++ " ["++ compound_resc_lock_value ( *comp_resc  )++"]")                                         #
-        #writeLine( *stream, "age_off_seconds =       *age_off_seconds " ++ type( *age_off_seconds ))                #
+        #writeLine( *stream, "lock on resc "++ *comp_resc ++ " ["++ compound_resc_lock_value ( *comp_resc  )++"]") 
+        #writeLine( *stream, "age_off_seconds =       *age_off_seconds " ++ type( *age_off_seconds ))
 
         # 2 ) get hierarchy info , data usage in cache, and a list of all data objects stamped with an access time
         #     ... and attempt to trim as much as possible from cache ; *try_more_trims is flag for loop "interrupt"
@@ -90,7 +87,8 @@ prune_cache_for_compound_resource_LRU ( *comp_resc, *unique, *stream )
         {
             msiString2KeyValPair("",*archive_repl_status)
             foreach (*ar in select DATA_ID, order(META_DATA_ATTR_VALUE),DATA_REPL_STATUS
-             where DATA_RESC_HIER = "*full_hier_to_archive" and META_DATA_ATTR_NAME like "irods_cache_mgt::atime::*full_hier_to_cache")
+             where DATA_RESC_HIER = "*full_hier_to_archive"
+             and META_DATA_ATTR_NAME like "irods_cache_mgt::atime::*full_hier_to_cache")
             {
                 *dataId = *ar.DATA_ID
                 *archive_repl_status.*dataId = *ar.DATA_REPL_STATUS
@@ -114,7 +112,9 @@ prune_cache_for_compound_resource_LRU ( *comp_resc, *unique, *stream )
                         *arcstat = '0'
                         errorcode( { *arcstat = *archive_repl_status.*dataid } )
                         # possibly "is eligible for synch" - to separate concerns
-                        *synched = do_sync(*full_hier_to_cache, *full_hier_to_archive, *dataid, *ch.DATA_SIZE, *ch.DATA_PATH, *logicalPath, *cchstat, *arcstat, false)
+                        *synched = do_sync(*full_hier_to_cache, *full_hier_to_archive, *dataid, *ch.DATA_SIZE, *ch.DATA_PATH,
+                                           *logicalPath, *cchstat, *arcstat, false)
+
                         if ( is_eligible_for_trim( *comp_resc , *roles.cache, *roles.archive, *dataid, *cchstat, *arcstat)) {
                             # *synched && is_eligible_for_trim ... (if not synched, don't check eligible for trim)
                             *size_found = *size_found + double(*ch.DATA_SIZE)
